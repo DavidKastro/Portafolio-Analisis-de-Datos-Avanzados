@@ -1,6 +1,6 @@
 ---
 title: "s3_Limpieza Datos"
-author: "Andrew Bocker"
+author: "David Castro"
 date: "2026-05-29"
 output: html_document
 ---

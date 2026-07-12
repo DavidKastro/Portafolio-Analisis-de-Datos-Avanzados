@@ -1,0 +1,678 @@
+---
+title: "Semana 4 — Guía de Visualización de Datos"
+author: "David Catro"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: '3'
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    highlight: tango
+    code_folding: show
+    number_sections: true
+subtitle: "Curso 92-0026: Análisis de Datos Avanzado para Negocios | ULACIT"
+---
+
+```{r configuracion, include=FALSE}
+# Este bloque configura opciones globales — no aparece en el documento final
+knitr::opts_chunk$set(
+  echo       = TRUE,
+  message    = FALSE,
+  warning    = FALSE,
+  fig.width  = 9,
+  fig.height = 5
+)
+```
+
+---
+
+> **Sobre este documento**  
+> Esta guía aplica los conceptos de visualización de datos de la Semana 4 usando
+> un dataset real sobre el impacto de la inteligencia artificial en el empleo
+> hacia el año 2030. Cada sección combina explicación, código R comentado e
+> interpretación del resultado.
+
+---
+
+# Preparación: Cargar paquetes y datos
+
+Antes de crear gráficos, cargamos los paquetes necesarios y leemos el dataset.
+
+```{r cargar-paquetes}
+library(tidyverse)  # para graficar y manipular datos
+library(plotly)     # para gráficos interactivos
+library(knitr)      # para tablas con formato
+```
+
+```{r cargar-datos}
+# Leemos el archivo CSV y lo guardamos en un objeto llamado "empleos"
+empleos <- read_csv("AI_Impact_on_Jobs_2030.csv")
+
+# Vemos las primeras filas
+head(empleos)
+```
+
+```{r explorar-estructura}
+# glimpse() muestra un resumen de todas las columnas del dataset
+glimpse(empleos)
+```
+
+---
+
+# Tablas de Frecuencia
+
+Una tabla de frecuencias cuenta **cuántas veces aparece cada valor** de una
+variable categórica. Tiene dos variantes:
+
+- **Frecuencia absoluta**: el conteo directo (¿cuántos?)
+- **Frecuencia relativa**: la proporción del total expresada en porcentaje (¿qué %?)
+
+## Ejemplo 1: Empleados por nivel de automatización
+
+```{r tabla-automatizacion}
+# Paso 1: contar cuántos hay en cada nivel
+tabla_automatizacion <- empleos |>
+  count(Automation_Level)|>
+  mutate(porcentaje = round(n / sum(n) * 100, 1)) # agregar la columna de porcentaje
+
+# Paso 2: mostrar la tabla con formato
+kable(
+  tabla_automatizacion,
+  col.names = c("Nivel de Automatización", "Frecuencia", "Porcentaje (%)"),
+  caption   = "Tabla 1. Distribución de empleados por nivel de automatización"
+)
+```
+
+**Interpretación:** Podemos ver qué nivel de automatización es más frecuente
+y qué porcentaje del total representa cada categoría.
+
+## Ejemplo 2: Empleados por tendencia de contratación
+
+```{r tabla-contratacion}
+# Contamos y calculamos porcentaje en un solo flujo
+empleos |>
+  count(Hiring_Trend_2026) |>
+  mutate(porcentaje = round(n / sum(n) * 100, 1)) |>
+  kable(
+    col.names = c("Tendencia de Contratación", "Frecuencia", "Porcentaje (%)"),
+    caption   = "Tabla 2. Tendencia de contratación proyectada para 2026"
+  )
+```
+
+---
+
+# Tablas de Contingencia
+
+Una tabla de contingencia cruza **dos variables categóricas** para ver si existe
+relación entre ellas. Por ejemplo: ¿los puestos con alta automatización tienden
+a tener una tendencia de contratación diferente?
+
+## Ejemplo: Automatización × Tendencia de contratación
+
+```{r tabla-contingencia}
+# Paso 1: contar las combinaciones de las dos variables
+tabla_cruzada <- empleos |>
+  count(Automation_Level, Hiring_Trend_2026)
+
+
+# Paso 2: convertir a formato de tabla cruzada
+tabla_cruzada <- tabla_cruzada |>
+  pivot_wider(
+    names_from  = Hiring_Trend_2026,  # los valores de esta columna se vuelven cabeceras
+    values_from = n,                  # los números van dentro de la tabla
+    values_fill = 0                   # si no hay datos, poner 0
+  )
+
+# Paso 3: mostrar
+kable(
+  tabla_cruzada,
+  caption = "Tabla 3. Contingencia: Automatización × Tendencia de Contratación"
+)
+```
+
+```{r tabla-contingencia-pct}
+# Misma tabla pero con porcentajes por fila
+empleos |>
+  count(Automation_Level, Hiring_Trend_2026) |>
+  group_by(Automation_Level) |>
+  mutate(porcentaje = round(n / sum(n) * 100, 1)) |>
+  ungroup() |>
+  select(-n) |>
+  pivot_wider(
+    names_from  = Hiring_Trend_2026,
+    values_from = porcentaje,
+    values_fill = 0
+  ) |>
+  kable(caption = "Tabla 4. Porcentajes por fila — ¿qué % de cada nivel tiene cada tendencia?")
+```
+
+**Interpretación:** Los porcentajes por fila permiten comparar si el nivel de
+automatización influye en la tendencia de contratación.
+
+---
+
+# Principios de Visualización Efectiva
+
+Antes de crear gráficos, recordemos los principios clave:
+
+1. **Claridad** — un gráfico debe responder una sola pregunta
+2. **Precisión** — ejes correctos, sin distorsiones visuales
+3. **Eficiencia** — solo los elementos que aporten información
+4. **Contexto** — siempre título, etiquetas de ejes y fuente del dato
+
+Aplicaremos estos principios en todos los gráficos a continuación.
+
+---
+
+# ggplot2: Gramática de Gráficos
+
+## La estructura básica
+
+Todo gráfico en ggplot2 se construye añadiendo capas con `+`:
+
+```
+ggplot(datos, aes(x = columna_x, y = columna_y)) +
+  geom_TIPO() +
+  labs(title = "...", x = "...", y = "...") +
+  theme_minimal()
+```
+
+## Gráfico 1 — Barras: puestos de trabajo más comunes
+
+Usamos barras para **comparar** valores entre categorías.
+
+```{r grafico-barras-puestos}
+# Paso 1: preparar los datos — contar y quedarnos con los 10 mayores
+top_puestos <- empleos |>
+  count(Job_Title) |>
+  slice_max(n, n = 10)
+
+# Paso 2: graficar
+ggplot(top_puestos, aes(x = n, y = reorder(Job_Title, n))) +
+  geom_col(fill = "#4B2E83") +
+  labs(
+    title   = "Top 10 Puestos de Trabajo más Frecuentes",
+    x       = "Número de Empleados",
+    y       = NULL,
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal()
+```
+
+**Principio aplicado:** `reorder(Job_Title, n)` ordena las barras de mayor a
+menor, lo que hace que la comparación sea inmediata.
+
+## Gráfico 2 — Histograma: distribución del riesgo de IA
+
+El histograma muestra cómo se **distribuyen** los valores de una variable numérica.
+
+```{r grafico-histograma}
+# Calculamos la media para marcarla en el gráfico
+media_riesgo <- mean(empleos$AI_Replacement_Risk)
+
+# Gráfico
+ggplot(empleos, aes(x = AI_Replacement_Risk)) +
+  geom_histogram(bins = 20, fill = "#E87722", color = "white") +
+  geom_vline(xintercept = media_riesgo, color = "#4B2E83",
+             linewidth = 1.2, linetype = "dashed") +
+  labs(
+    title   = "Distribución del Riesgo de Reemplazo por IA",
+    x       = "Riesgo de Reemplazo (0 = bajo, 1 = alto)",
+    y       = "Número de Empleados",
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal()
+```
+
+**Interpretación:** La línea punteada marca la media. Si la distribución es
+relativamente plana (uniforme), significa que el riesgo está repartido de forma
+pareja entre todos los empleados, sin concentrarse en un extremo.
+
+## Gráfico 3 — Boxplot: salario por nivel de educación
+
+El boxplot muestra la distribución de una variable numérica **separada por grupos**.
+
+```{r grafico-boxplot}
+ggplot(empleos, aes(x = Education_Level, y = Average_Salary_USD,
+                    fill = Education_Level)) +
+  geom_boxplot() +
+  labs(
+    title   = "Distribución de Salarios por Nivel de Educación",
+    x       = "Nivel de Educación",
+    y       = "Salario Promedio (USD)",
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+
+
+```
+
+**¿Cómo leer un boxplot?**
+
+- La **línea central** = mediana
+- Los **bordes de la caja** = donde está el 50% central de los datos
+- Los **bigotes** = rango sin valores atípicos
+- Los **puntos sueltos** = valores atípicos (outliers)
+
+## Gráfico 4 — Dispersión: riesgo de IA vs. salario
+
+El gráfico de dispersión muestra la **relación** entre dos variables numéricas.
+
+```{r grafico-dispersion}
+# Usamos una muestra de 500 para que el gráfico no quede saturado de puntos
+set.seed(42)
+muestra <- empleos |> slice_sample(n = 500)
+
+ggplot(muestra, aes(x = AI_Replacement_Risk, y = Average_Salary_USD,
+                    color = Automation_Level)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(
+    title   = "Relación entre Riesgo de IA y Salario",
+    x       = "Riesgo de Reemplazo por IA",
+    y       = "Salario Promedio (USD)",
+    color   = "Automatización",
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal()
+```
+
+**Principio aplicado:** `alpha = 0.5` añade transparencia para que se puedan
+ver los puntos que se superponen. `geom_smooth()` dibuja la línea de tendencia
+general.
+
+## Gráfico 5 — Barras divergentes: crecimiento por industria
+
+Este tipo de gráfico es ideal cuando los valores pueden ser **positivos o negativos**.
+
+```{r grafico-barras-industria}
+# Paso 1: calcular el crecimiento promedio por industria
+crecimiento <- empleos |>
+  group_by(Industry) |>
+  summarise(crecimiento_promedio = mean(Job_Growth_2030, na.rm = TRUE))
+
+# Paso 2: crear columna de color según si es positivo o negativo
+crecimiento <- crecimiento |>
+  mutate(color = ifelse(crecimiento_promedio > 0, "Positivo", "Negativo"))
+
+# Paso 3: graficar
+ggplot(crecimiento, aes(x = crecimiento_promedio,
+                        y = reorder(Industry, crecimiento_promedio),
+                        fill = color)) +
+  geom_col() +
+  scale_fill_manual(values = c("Positivo" = "#1B4332", "Negativo" = "#DC2626")) +
+  labs(
+    title   = "Crecimiento Promedio del Empleo por Industria al 2030 (%)",
+    x       = "Crecimiento Promedio (%)",
+    y       = NULL,
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## Gráfico 6 — Barras apiladas: uso de IA por tamaño de empresa
+
+Las barras apiladas al 100% muestran la **composición** dentro de cada grupo.
+
+```{r grafico-apilado}
+ggplot(empleos, aes(x = Company_Size, fill = AI_Tool_Usage)) +
+  geom_bar(position = "fill") +
+  geom_text(
+    stat = "count",
+    aes(label = scales::percent(after_stat(prop), accuracy = 1),
+        group = AI_Tool_Usage),
+    position = position_fill(vjust = 0.5),
+    color = "black",
+    size = 4
+  ) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(
+    values = c(
+      "Low" = "#EDE8F5",
+      "Moderate" = "#9B7EC8",
+      "High" = "#4B2E83"
+    )
+  ) +
+  labs(
+    title   = "Uso de Herramientas de IA según Tamaño de Empresa",
+    x       = "Tamaño de la Empresa",
+    y       = "Proporción de Empleados",
+    fill    = "Uso de IA",
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal()
+```
+
+## Gráfico 7 — Heatmap: automatización × tendencia de contratación
+
+El heatmap es la versión visual de una tabla de contingencia. El color de cada
+celda indica la cantidad.
+
+```{r grafico-heatmap}
+# Paso 1: contar las combinaciones
+datos_heatmap <- empleos |>
+  count(Automation_Level, Hiring_Trend_2026)
+
+# Paso 2: graficar
+ggplot(datos_heatmap, aes(x = Hiring_Trend_2026, y = Automation_Level, fill = n)) +
+  geom_tile(color = "white") +  #esto crea la grilla del heatmap
+  geom_text(aes(label = n), color = "white", fontface = "bold", size = 5) +
+  scale_fill_gradient(low = "#EDE8F5", high = "#4B2E83") +
+  labs(
+    title   = "Heatmap: Automatización × Tendencia de Contratación",
+    x       = "Tendencia de Contratación",
+    y       = "Nivel de Automatización",
+    fill    = "Cantidad",
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal()
+```
+
+## Gráfico 8 — Facetas: distribución de salario por país
+
+Las facetas dividen un gráfico en **subpaneles**, uno por categoría.
+
+```{r grafico-facetas}
+# Paso 1: filtrar los 6 países con más registros
+top_paises <- empleos |>
+  count(Country) |>
+  slice_max(n, n = 6) |>
+  pull(Country)
+
+# Paso 2: filtrar y graficar con facetas
+empleos |>
+  filter(Country %in% top_paises) |>
+  ggplot(aes(x = Average_Salary_USD)) +
+  geom_histogram(bins = 15, fill = "#4B2E83", color = "white") +
+  facet_wrap(~ Country, ncol = 3) +
+  labs(
+    title   = "Distribución de Salarios por País (Top 6)",
+    x       = "Salario Promedio (USD)",
+    y       = "Número de Empleados",
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal()
+```
+
+---
+
+# plotly: Gráficos Interactivos
+
+Con `ggplotly()` convertimos cualquier gráfico de ggplot2 en **interactivo**
+con una sola línea. Esto permite hacer zoom, ver detalles al pasar el cursor
+y explorar los datos de manera dinámica.
+
+## Gráfico interactivo 1: Riesgo de IA vs. Demanda Futura
+
+```{r plotly-scatter}
+# Paso 1: crear el gráfico en ggplot2 y guardarlo en "p"
+p <- empleos |>
+  slice_sample(n = 400) |>
+  ggplot(aes(x = AI_Replacement_Risk, y = Future_Demand_Score,
+             color = Automation_Level,
+             text  = paste("Puesto:", Job_Title, "\nPaís:", Country))) +
+  geom_point(alpha = 0.7) +
+  labs(
+    title = "Riesgo de IA vs. Demanda Futura",
+    x     = "Riesgo de Reemplazo por IA",
+    y     = "Demanda Futura del Puesto",
+    color = "Automatización"
+  ) +
+  theme_minimal()
+
+# Paso 2: convertir a interactivo
+ggplotly(p, tooltip = "text")
+```
+
+**Cómo explorar:** Pasa el cursor sobre los puntos para ver detalles. Arrastra
+para hacer zoom. Doble clic para volver a la vista completa.
+
+## Gráfico interactivo 2: Salario promedio por industria
+
+```{r plotly-barras}
+# Paso 1: calcular el salario promedio por industria
+salario_industria <- empleos |>
+  group_by(Industry) |>
+  summarise(salario_prom = mean(Average_Salary_USD, na.rm = TRUE)) |>
+  arrange(salario_prom)
+
+# Paso 2: gráfico interactivo con plot_ly()
+plot_ly(
+  data        = salario_industria,
+  x           = ~salario_prom,
+  y           = ~reorder(Industry, salario_prom),
+  type        = "bar",
+  orientation = "h",
+  marker      = list(color = "#4B2E83")
+) |>
+  layout(
+    title = "Salario Promedio por Industria",
+    xaxis = list(title = "Salario Promedio (USD)"),
+    yaxis = list(title = "")
+  )
+```
+
+---
+
+# Data Storytelling con IA
+
+El **data storytelling** convierte un gráfico en una narrativa útil para la
+toma de decisiones. Usamos un LLM para generar el primer borrador, que luego
+el analista debe **revisar y validar críticamente**.
+
+## Paso 1 — El gráfico
+
+```{r storytelling-grafico}
+# Calculamos el riesgo promedio por puesto (solo puestos con 50+ registros)
+riesgo_puesto <- empleos |>
+  group_by(Job_Title) |>
+  summarise(
+    riesgo_promedio = mean(AI_Replacement_Risk, na.rm = TRUE),
+    n               = n()
+  ) |>
+  filter(n >= 50) |>
+  slice_max(riesgo_promedio, n = 10)
+
+# Gráfico
+ggplot(riesgo_puesto, aes(x = riesgo_promedio,
+                          y = reorder(Job_Title, riesgo_promedio))) +
+  geom_col(fill = "#4B2E83") +
+  labs(
+    title   = "Top 10 Puestos con Mayor Riesgo de Reemplazo por IA",
+    x       = "Riesgo Promedio (0 = bajo, 1 = alto)",
+    y       = NULL,
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal()
+```
+
+## Paso 2 — Las estadísticas para el prompt
+
+```{r storytelling-estadisticas}
+# Extraemos los números que incluiremos en el prompt al LLM
+riesgo_puesto |>
+  mutate(riesgo_pct = round(riesgo_promedio * 100, 1)) |>
+  select(Job_Title, riesgo_pct, n) |>
+  kable(
+    col.names = c("Puesto", "Riesgo Promedio (%)", "N° de empleados"),
+    caption   = "Datos para incluir en el prompt al LLM"
+  )
+```
+
+**Plantilla de prompt recomendada:**
+
+> *"Eres un analista de recursos humanos. El siguiente gráfico muestra los
+> 10 puestos con mayor riesgo de reemplazo por IA según el dataset
+> AI Impact on Jobs 2030.*
+>
+> *Datos: [pegar la tabla anterior]*
+>
+> *Escribe un párrafo de 4–5 oraciones con: (1) el hallazgo principal,
+> (2) una posible explicación de negocio, y (3) una recomendación estratégica.
+> No hagas afirmaciones que no estén respaldadas por los datos."*
+
+## Paso 3 — Evaluar críticamente la narrativa
+
+> ⚠️ **Importante:** Los LLMs pueden generar narrativas plausibles pero
+> incorrectas. Siempre verifica:
+>
+> - ¿Los números coinciden con los datos reales?
+> - ¿Se afirman relaciones causales sin evidencia?
+> - ¿Se omiten datos que contradicen la narrativa?
+
+
+
+---
+
+# Errores Comunes en Visualización
+
+## Error 1: Pie chart con muchas categorías
+
+```{r error-pie}
+# ❌ MAL — un pie con 10+ categorías es ilegible
+# pie(table(empleos$Industry))   # nunca hagas esto
+
+# ✅ BIEN — barras horizontales ordenadas
+empleos |>
+  count(Industry) |>
+  ggplot(aes(x = n, y = reorder(Industry, n))) +
+  geom_col(fill = "#4B2E83") +
+  labs(
+    title   = "✅ Correcto: Barras en lugar de pie chart",
+    x       = "Número de Empleados",
+    y       = NULL,
+    caption = "Fuente: AI_Impact_on_Jobs_2030.csv"
+  ) +
+  theme_minimal()
+```
+
+## Error 2: Eje Y que no empieza en cero
+
+```{r error-ejes}
+# Calculamos el salario promedio por educación
+salario_edu <- empleos |>
+  group_by(Education_Level) |>
+  summarise(salario = mean(Average_Salary_USD, na.rm = TRUE))
+
+# ❌ MAL — eje recortado que exagera las diferencias
+malo <- ggplot(salario_edu, aes(x = Education_Level, y = salario)) +
+  geom_col(fill = "#E87722") +
+  coord_cartesian(ylim = c(100000, 140000)) +
+  labs(title = "❌ Eje Y recortado", y = "Salario USD") +
+  theme_minimal()
+
+# ✅ BIEN — eje que empieza en cero
+bueno <- ggplot(salario_edu, aes(x = Education_Level, y = salario)) +
+  geom_col(fill = "#4B2E83") +
+  scale_y_continuous(limits = c(0, NA)) +
+  labs(title = "✅ Eje Y desde cero", y = "Salario USD") +
+  theme_minimal()
+
+# Mostramos ambos lado a lado
+library(patchwork)
+malo + bueno
+```
+
+---
+
+# R Markdown: Documentación del Análisis
+
+R Markdown combina texto, código R y resultados en un solo documento.
+El archivo que estás leyendo **es** un R Markdown. Al hacer clic en
+**Knit → Knit to HTML** en RStudio, R ejecuta todo el código y genera el reporte.
+
+## Opciones de chunk más usadas
+
+| Opción | Efecto |
+|---|---|
+| `echo = FALSE` | Oculta el código, muestra el resultado |
+| `include = FALSE` | Oculta código y resultado |
+| `eval = FALSE` | Muestra el código pero no lo ejecuta |
+| `message = FALSE` | Oculta mensajes de los paquetes |
+| `fig.width = 8` | Ancho del gráfico en pulgadas |
+
+## Insertar estadísticas directamente en el texto
+
+Con `` `r ` `` podemos insertar números calculados directamente en el texto:
+
+El dataset tiene **`r nrow(empleos)`** empleados de
+**`r n_distinct(empleos$Country)`** países.
+El salario promedio es **`r round(mean(empleos$Average_Salary_USD), 0)`** USD.
+
+---
+
+# Resumen Ejecutivo
+
+```{r resumen-final}
+# Estadísticas clave del dataset en una sola tabla
+empleos |>
+  summarise(
+    `Total empleados`      = n(),
+    `Países`               = n_distinct(Country),
+    `Puestos únicos`       = n_distinct(Job_Title),
+    `Industrias`           = n_distinct(Industry),
+    `Salario promedio USD` = round(mean(Average_Salary_USD), 0),
+    `Riesgo IA promedio`   = round(mean(AI_Replacement_Risk), 2),
+    `Crecimiento 2030 (%)`  = round(mean(Job_Growth_2030), 1)
+  ) |>
+  pivot_longer(everything(), names_to = "Métrica", values_to = "Valor") |>
+  kable(caption = "Resumen estadístico del dataset AI Impact on Jobs 2030")
+```
+
+---
+
+# Portafolio Digital — Documentación del Uso de IA
+
+Completa esta sección y publícala en tu Google Sites.
+
+**Fecha:** _______________  
+**LLM utilizado:** ☐ Claude  ☐ ChatGPT  ☐ Otro: _______________  
+**Gráfico analizado:** _______________
+
+### Prompt utilizado
+
+```
+[Pega aquí el prompt exacto que enviaste al LLM]
+```
+
+### Narrativa generada por el LLM
+
+```
+[Pega aquí la respuesta completa, sin modificar]
+```
+
+### Mi evaluación crítica
+
+**¿Qué está correcto y respaldado por los datos?**  
+*[Tu respuesta]*
+
+**¿Qué está incorrecto o exagerado?**  
+*[Tu respuesta]*
+
+**¿Qué corregirías?**  
+*[Tu respuesta]*
+
+**Lección aprendida:**  
+*[Tu reflexión — mínimo un párrafo]*
+
+---
+
+# Reflexión Final
+
+> ¿Cuál es el hallazgo más importante que encontraste sobre el impacto de la IA
+> en el empleo? ¿Cómo lo comunicarías a un gerente de Recursos Humanos sin
+> conocimiento técnico?
+
+*[Escribe tu reflexión aquí — mínimo un párrafo]*
+
+---
+
+*Documento generado con R Markdown | Curso 92-0026 ULACIT | Semana 4*

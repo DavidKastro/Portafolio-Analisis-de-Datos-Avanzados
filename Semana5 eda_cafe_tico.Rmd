@@ -1,0 +1,374 @@
+---
+title: "EDA: Café Tico — Análisis de Ventas"
+subtitle: "Análisis Exploratorio de Datos con R — Semana 5"
+author: "Análisis de Datos Avanzado para Negocios (92-0026)"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r configuracion, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+---
+
+# Introducción
+
+Este documento realiza un **Análisis Exploratorio de Datos (EDA)** sobre el dataset `cafe_tico_limpio.csv`, que contiene **10,000 transacciones** de una cafetería costarricense.
+
+A diferencia de un dataset crudo, este archivo ya está limpio y enriquecido con variables derivadas útiles para el análisis:
+
+| Variable derivada   | Descripción                                 |
+|---------------------|---------------------------------------------|
+| `mes`               | Mes de la transacción (1 = enero)           |
+| `trimestre`         | Trimestre del año (1–4)                     |
+| `dia_semana`        | Día de la semana (0 = lunes, 6 = domingo)   |
+| `es_fin_de_semana`  | 1 = sábado o domingo, 0 = día de semana     |
+| `segmento_gasto`    | Categoría del gasto: Baja / Media / Alta    |
+
+**Preguntas que guían este EDA:**
+
+- ¿Qué productos generan mayor ingreso?
+- ¿Cómo se distribuye el gasto por transacción?
+- ¿Existen diferencias entre días de semana y fin de semana?
+- ¿Qué métodos de pago y ubicaciones predominan?
+
+---
+
+# Preparación
+
+## Cargar paquetes
+
+```{r paquetes}
+library(tidyverse)   # manipulación y visualización
+library(scales)      # formato de ejes (dollar, percent)
+library(knitr)       # tablas formateadas con kable()
+```
+
+## Importar los datos
+
+```{r importar}
+# Leer el dataset limpio
+cafe <- read_csv("cafe_tico_limpio.csv")
+
+# Convertir variables categóricas y la fecha
+cafe <- cafe |>
+  mutate(
+    Transaction_Date = as.Date(`Transaction Date`),
+    Item             = as.factor(Item),
+    Payment_Method   = as.factor(`Payment Method`),
+    Location         = as.factor(Location),
+    segmento_gasto   = factor(segmento_gasto,
+                               levels = c("Baja", "Media", "Alta")),
+    dia_semana       = factor(dia_semana,
+                               levels = 0:6,
+                               labels = c("Lun","Mar","Mié",
+                                          "Jue","Vie","Sáb","Dom")),
+    es_fin_de_semana = factor(es_fin_de_semana,
+                               levels = c(0, 1),
+                               labels = c("Día de semana", "Fin de semana"))
+  )
+
+# Vista rápida
+glimpse(cafe)
+```
+
+---
+
+# Inspección Inicial
+
+## Dimensiones
+
+```{r dimensiones}
+cat("Filas:   ", nrow(cafe), "\n")
+cat("Columnas:", ncol(cafe), "\n")
+```
+
+## Primeras filas
+
+```{r head}
+head(cafe, 6)|>
+  kable(caption = "Muestra de las primeras 6 transacciones")
+```
+
+## Resumen estadístico
+
+```{r summary}
+cafe |>
+  select(Quantity, `Price Per Unit`, `Total Spent`) |>
+  summary()
+```
+
+> **Observación:** No hay valores `NA` en este dataset — ya fue limpiado previamente. Podemos pasar directamente al análisis descriptivo.
+
+---
+
+# Estadísticas Descriptivas
+
+## Gasto total por transacción (`Total Spent`)
+
+```{r estadisticas-total}
+cafe |>
+  summarise(
+    n         = n(),
+    media     = mean(`Total Spent`),
+    mediana   = median(`Total Spent`),
+    desv_est  = sd(`Total Spent`),
+    minimo    = min(`Total Spent`),
+    maximo    = max(`Total Spent`),
+    q1        = quantile(`Total Spent`, 0.25),
+    q3        = quantile(`Total Spent`, 0.75),
+    IQR       = IQR(`Total Spent`)
+  ) |>
+  pivot_longer(everything(),
+               names_to  = "Estadística",
+               values_to = "Valor") |>
+  mutate(Valor = round(Valor, 2)) |>
+  kable(caption = "Resumen estadístico: Total Spent ($)")
+```
+
+> **Interpretación:** La media ($`r round(mean(cafe$"Total Spent"), 2)`) es mayor que la mediana ($`r round(median(cafe$"Total Spent"), 2)`), lo que indica una distribución con **sesgo positivo leve**: la mayoría de transacciones son de gasto bajo-medio, pero algunas compras de mayor valor elevan el promedio.
+
+## Gasto por producto
+
+```{r estadisticas-producto}
+cafe |>
+  group_by(Item) |>
+  summarise(
+    n              = n(),
+    ingreso_total  = sum(`Total Spent`),
+    media_gasto    = round(mean(`Total Spent`), 2),
+    mediana_gasto  = round(median(`Total Spent`), 2),
+    desv_est       = round(sd(`Total Spent`), 2)
+  ) |>
+  arrange(desc(ingreso_total)) |>
+  mutate(ingreso_total = dollar(ingreso_total)) |>
+  kable(caption = "Estadísticas de gasto por producto")
+```
+
+## Gasto por segmento
+
+```{r estadisticas-segmento}
+cafe |>
+  group_by(segmento_gasto) |>
+  summarise(
+    n             = n(),
+    pct           = round(n() / nrow(cafe) * 100, 1),
+    media_gasto   = round(mean(`Total Spent`), 2),
+    mediana_gasto = round(median(`Total Spent`), 2)
+  ) |>
+  kable(caption = "Transacciones por segmento de gasto (%)",
+        col.names = c("Segmento", "n", "% del total",
+                      "Media ($)", "Mediana ($)"))
+```
+
+---
+
+# Visualizaciones
+
+## Distribución del gasto (histograma)
+
+```{r hist-gasto, fig.width=8, fig.height=4}
+cafe |>
+  ggplot(aes(x = `Total Spent`)) +
+  geom_histogram(bins = 20,
+                 fill  = "#4B2E83",
+                 color = "white") +
+  labs(
+    title    = "Distribución del gasto por transacción",
+    subtitle = "Café Tico — 10,000 transacciones",
+    x        = "Total Spent ($)",
+    y        = "Número de transacciones"
+  ) +
+  theme_minimal()
+```
+
+## Gasto por producto (boxplot)
+
+```{r boxplot-producto, fig.width=8, fig.height=5}
+cafe |>
+  ggplot(aes(x    = reorder(Item, `Total Spent`, median),
+             y    = `Total Spent`,
+             fill = Item)) +
+  geom_boxplot(alpha = 0.7, show.legend = FALSE) +
+  coord_flip() +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title    = "Distribución del gasto por producto",
+    subtitle = "La línea central es la mediana; los puntos son valores atípicos",
+    x        = NULL,
+    y        = "Total Spent ($)"
+  ) +
+  theme_minimal()
+```
+
+> **Interpretación:** Smoothie y Salad tienden a tener medianas más altas. Los productos con cajas más anchas (mayor IQR) tienen mayor variabilidad en el gasto por transacción.
+
+## Número de transacciones por producto
+
+```{r barras-producto, fig.width=8, fig.height=4}
+cafe |>
+  count(Item) |>
+  ggplot(aes(x = reorder(Item, n), y = n, fill = Item)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = comma(n)), hjust = -0.1, size = 3.5) +
+  coord_flip() +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(
+    title = "Transacciones por producto",
+    x     = NULL,
+    y     = "Número de transacciones"
+  ) +
+  theme_minimal()
+```
+
+## Método de pago
+
+```{r barras-pago, fig.width=7, fig.height=3.5}
+cafe |>
+  count(Payment_Method) |>
+  mutate(pct = round(n / sum(n) * 100, 1)) |>
+  ggplot(aes(x = reorder(Payment_Method, n),
+             y = n,
+             fill = Payment_Method)) +
+  geom_col(show.legend = FALSE) +
+  geom_text(aes(label = paste0(pct, "%")), hjust = -0.1, size = 4) +
+  coord_flip() +
+  scale_fill_manual(values = c("#4B2E83", "#E87722", "#2E6B3E")) +
+  labs(
+    title = "Transacciones por método de pago",
+    x     = NULL,
+    y     = "Transacciones"
+  ) +
+  theme_minimal()
+```
+
+## Gasto promedio: día de semana vs. fin de semana
+
+```{r barras-fds, fig.width=6, fig.height=4}
+cafe |>
+  group_by(es_fin_de_semana) |>
+  summarise(media_gasto = mean(`Total Spent`)) |>
+  ggplot(aes(x = es_fin_de_semana,
+             y = media_gasto,
+             fill = es_fin_de_semana)) +
+  geom_col(width = 0.5, show.legend = FALSE) +
+  scale_fill_manual(values = c("#4B2E83", "#E87722")) +
+  scale_y_continuous(labels = dollar,
+                     expand = expansion(mult = c(0, 0.12))) +
+  labs(
+    title    = "Gasto promedio: día de semana vs. fin de semana",
+    subtitle = "¿Gastan más los clientes los fines de semana?",
+    x        = NULL,
+    y        = "Gasto promedio ($)"
+  ) +
+  theme_minimal()
+```
+
+## Gasto por día de la semana
+
+```{r barras-dia, fig.width=8, fig.height=4}
+cafe |>
+  group_by(dia_semana) |>
+  summarise(
+    ingreso_total = sum(`Total Spent`),
+    n             = n()
+  ) |>
+  ggplot(aes(x = dia_semana, y = ingreso_total, fill = dia_semana)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_manual(values = c(rep("#4B2E83", 5),
+                                "#E87722", "#E87722")) +
+  scale_y_continuous(labels = dollar) +
+  labs(
+    title    = "Ingreso total por día de la semana",
+    subtitle = "Naranja = fin de semana",
+    x        = NULL,
+    y        = "Ingreso total ($)"
+  ) +
+  theme_minimal()
+```
+
+## Ingreso mensual (tendencia temporal)
+
+```{r lineas-tiempo, fig.width=9, fig.height=4}
+cafe |>
+  mutate(mes_fecha = floor_date(Transaction_Date, "month")) |>
+  group_by(mes_fecha) |>
+  summarise(ingreso_total = sum(`Total Spent`)) |>
+  ggplot(aes(x = mes_fecha, y = ingreso_total)) +
+  geom_line(color = "#4B2E83", linewidth = 1.2) +
+  geom_point(color = "#E87722", size = 3) +
+  labs(
+    title    = "Ingreso mensual total",
+    subtitle = "Suma de Total Spent por mes",
+    x        = NULL,
+    y        = "Ingreso total ($)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+---
+
+# Tabla Resumen Final
+
+```{r tabla-final}
+cafe |>
+  group_by(Item) |>
+  summarise(
+    Transacciones   = n(),
+    `Ingreso Total` = dollar(sum(`Total Spent`)),
+    `Media ($)`     = round(mean(`Total Spent`), 2),
+    `Mediana ($)`   = round(median(`Total Spent`), 2),
+    `DE ($)`        = round(sd(`Total Spent`), 2)
+  ) |>
+  arrange(desc(Transacciones)) |>
+  kable(caption = "Resumen completo de ventas por producto")
+```
+
+---
+
+# Conclusiones
+
+```{r stats-finales, echo=FALSE}
+producto_top_n    <- cafe |> count(Item) |> slice_max(n, n=1) |> pull(Item)
+producto_top_ing  <- cafe |> group_by(Item) |>
+                     summarise(ing = sum(`Total Spent`)) |>
+                     slice_max(ing, n=1) |> pull(Item)
+media_g           <- round(mean(cafe$`Total Spent`), 2)
+mediana_g         <- round(median(cafe$`Total Spent`), 2)
+pago_top          <- cafe |> count(Payment_Method) |>
+                     slice_max(n, n=1) |> pull(Payment_Method)
+```
+
+Con base en el análisis realizado, se destacan los siguientes hallazgos:
+
+1. **Volumen de ventas:** `r producto_top_n` es el producto con más transacciones registradas, mientras que `r producto_top_ing` lidera en ingreso total acumulado.
+
+2. **Gasto por transacción:** La media es **$`r media_g`** y la mediana **$`r mediana_g`**. La diferencia indica una distribución con sesgo leve hacia valores altos.
+
+3. **Método de pago dominante:** `r pago_top` concentra la mayor proporción de transacciones, lo que podría guiar decisiones sobre infraestructura de pagos.
+
+4. **Segmentación:** La mayoría de transacciones caen en el segmento "Media", con una porción relevante en "Baja". El segmento "Alta" representa oportunidades de ticket elevado.
+
+5. **Próximos pasos sugeridos:**
+   - Aplicar pruebas de hipótesis (t-test) para confirmar si la diferencia de gasto entre fin de semana y día de semana es estadísticamente significativa.
+   - Construir un modelo de regresión para predecir `Total Spent` en función de producto, día y ubicación.
+   - Explorar si la temporada (trimestre) afecta el mix de productos vendidos.
+
+---
+
+*Documento generado con R Markdown — Curso 92-0026 ULACIT*

@@ -1,0 +1,203 @@
+---
+title: "S1-Introduccion a R"
+author: "David Castro"
+date: "2026-05-22"
+output: html_document
+  
+---
+
+#Operaciones basicas
+
+```{r}
+# ── Aritmética básica ──────────────────────────────────────────
+5 + 3 # suma
+10 - 4 # resta
+6 * 7 # multiplicación
+20 / 4 # división
+2 ^ 8 # potencia (2 elevado a 8)
+17 %% 5 # módulo (resto de la división: 17 / 5 = 3 R 2)
+17 %/% 5 # división entera
+# ── Funciones matemáticas ──────────────────────────────────────
+sqrt(144) # raíz cuadrada → 12
+abs(-25) # valor absoluto → 25
+log(100) # logaritmo natural
+log10(100) # logaritmo base 10 → 2
+log(100, base=10) # equivalente al anterior
+exp(1) # número e → 2.718282
+pi # constante π → 3.141593
+round(3.14159, digits=2) # redondear a 2 decimales → 3.14
+ceiling(4.2) # redondear hacia arriba → 5
+floor(4.9) # redondear hacia abajo → 4
+
+
+``
+
+```
+#Asignacion de variables
+
+```{r}
+# ── Verificar el tipo de un objeto ────────────────────────────
+class(125000)      # → 'numeric'
+class('Hola')      # → 'character'
+class(TRUE)        # → 'logical'
+class(as.Date('2024-01-15')) # → 'Date'
+# typeof() da el tipo interno (más técnico)
+typeof(42L)       # → 'integer'
+typeof(3.14)      # → 'double'
+# is.* para verificar
+is.numeric(125000)   # → TRUE
+is.character(42)     # → FALSE
+is.na(NA)            # → TRUE
+# as.* para convertir
+as.numeric('42')     # '42' (texto) → 42 (número)
+as.character(100)    # 100 (número) → '100' (texto)
+as.logical(1)        # 1 → TRUE; 0 → FALSE
+```
+
+```{r}
+# ── Asignación de variables ────────────────────────────────────
+# Atajo para <- : Alt + - (Windows) o Option + - (Mac)
+
+ventas_enero <- 125000       # número
+empresa <- 'RetailCR S.A.'   # texto (string)
+es_rentable <- TRUE          # lógico (TRUE o FALSE)
+sin_dato <- NA               # valor faltante (missing)
+
+# Ver el valor de una variable: escríbela y ejecuta
+
+ventas_enero
+empresa
+
+# O usa print() explícitamente
+print(es_rentable)
+
+# Operaciones con variables
+ventas_febrero <- 138000
+total_primer_bimestre <- ventas_enero + ventas_febrero
+total_primer_bimestre
+
+# El panel Environment (↗) muestra todas las variables creadas
+
+# ── Convenciones de nombres ────────────────────────────────────
+# ✅ Recomendado: snake_case
+precio_unitario <- 2500
+nombre_cliente <- 'Ana García'
+# ❌ Evitar: espacios (no funciona) o nombres ambiguos
+# precio unitario <- 2500 # ERROR
+# x <- 2500 # funciona pero no es descriptivo
+```
+
+# Vectores
+
+```{r}
+# ── Crear vectores con c() (combine) ──────────────────────────
+ventas <- c(45000, 62000, 38000, 71000, 55000, 80000)
+meses <- c('Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun')
+activo <- c(TRUE, TRUE, FALSE, TRUE, FALSE, TRUE)
+
+# ── Secuencias ─────────────────────────────────────────────────
+numeros <- 1:10                      # 1, 2, 3, ..., 10
+pares <- seq(2, 20, by=2)            # 2, 4, 6, ..., 20
+tercios <- seq(0, 1, length.out=4)   # 0.000, 0.333, 0.667, 1.000
+repetido <- rep('A', times=5)        # 'A' 'A' 'A' 'A' 'A'
+
+# ── Operaciones sobre vectores (se aplican elemento a elemento) ─
+ventas * 1.13          # agregar 13% de impuesto a cada venta
+ventas - mean(ventas)  # diferencia respecto a la media
+ventas > 50000         # vector lógico: ¿cuáles superan 50,000?
+
+# ── Funciones estadísticas sobre vectores ─────────────────────
+length(ventas)         # cantidad de elementos → 6
+sum(ventas)            # suma total
+mean(ventas)           # promedio
+median(ventas)         # mediana
+sd(ventas)             # desviación estándar
+var(ventas)            # varianza
+min(ventas)            # mínimo
+max(ventas)            # máximo
+range(ventas)          # c(min, max)
+summary(ventas)        # resumen estadístico completo
+
+# ── Indexación (acceder a elementos) ──────────────────────────
+ventas[1]          # primer elemento (R empieza en 1, no en 0)
+ventas[c(2,4)]     # segundo y cuarto elemento
+ventas[ventas > 60000]       # elementos mayores a 60,000
+meses[ventas > 60000]        # meses donde las ventas superan 60,000
+```
+
+#Data Frames
+
+```{r}
+# ── Crear un data frame manualmente ────────────────────────────
+
+ventas_df <- data.frame(
+mes = c('Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun'),
+sucursal = c('SJ', 'SJ', 'ALJ', 'ALJ', 'HER', 'HER'),
+ventas = c(45000, 62000, 38000, 71000, 55000, 80000),
+descuento = c(0.05, 0.10, 0.05, 0.15, 0.08, 0.12),
+meta_logro = c(TRUE, TRUE, FALSE, TRUE, TRUE, TRUE)
+)
+
+# ── Explorar la estructura ──────────────────────────────────────
+ventas_df            # ver todo el data frame
+head(ventas_df, 3)   # primeras 3 filas
+tail(ventas_df, 2)   # últimas 2 filas
+nrow(ventas_df)      # número de filas → 6
+ncol(ventas_df)      # número de columnas → 5
+dim(ventas_df)       # dimensiones → c(6, 5)
+str(ventas_df)       # estructura compacta de cada columna
+summary(ventas_df)   # resumen estadístico por columna
+names(ventas_df)     # nombres de las columnas
+
+# ── Acceder a columnas con $ ────────────────────────────────────
+ventas_df$ventas          # vector de la columna 'ventas'
+ventas_df$mes             # vector de la columna 'mes'
+mean(ventas_df$ventas)    # promedio de ventas
+sum(ventas_df$ventas)     # total de ventas
+# ── Acceder con [fila, columna] ─────────────────────────────────
+ventas_df[1, ]                    # primera fila completa
+ventas_df[, 3]                    # tercera columna completa
+ventas_df[2, 3]                   # fila 2, columna 3 → 62000
+ventas_df[ventas_df$sucursal == 'SJ', ] # filas de San José
+```
+
+# Introduccion a Tidyverse
+
+```{r}
+# ── Instalar paquetes (solo se hace una vez por proyecto) ───────
+# En Posit Cloud, tidyverse generalmente ya está disponible.
+# Si necesitas instalar algún paquete adicional:
+install.packages('tidyverse') # instala el meta-paquete completo
+install.packages('janitor') # para limpiar nombres de columnas
+install.packages('skimr') # para resúmenes estadísticos detallados
+# ── Cargar paquetes (se hace al inicio de CADA sesión) ──────────
+library(tidyverse) # carga: dplyr, ggplot2, tidyr, readr, etc.
+library(janitor) # funciones de limpieza de datos
+library(skimr) # resúmenes estadísticos completos
+# Al cargar tidyverse verás un mensaje indicando los paquetes
+# cargados y posibles conflictos con funciones base. Es normal.
+```
+
+#El operador pipe
+
+```{r}
+# ── Sin pipe: lectura de adentro hacia afuera (difícil de seguir)
+resultado_sin_pipe <- arrange(filter(select(ventas_df,
+mes, sucursal, ventas), ventas > 50000), desc(ventas))
+# ── Con pipe |> : lectura natural de izquierda a derecha ───────
+resultado_con_pipe <- ventas_df |>
+select(mes, sucursal, ventas) |> # paso 1: elegir columnas
+filter(ventas > 50000) |> # paso 2: filtrar filas
+arrange(desc(ventas)) # paso 3: ordenar descendente
+# Ambos producen el mismo resultado — pero el pipe es mucho más claro
+# ── El pipe se lee como 'y luego...' ────────────────────────────
+# Toma ventas_df
+# |> y luego selecciona las columnas mes, sucursal, ventas
+# |> y luego filtra las filas donde ventas > 50000
+# |> y luego ordena de mayor a menor
+# Atajo de teclado para |> : Ctrl+Shift+M
+# (Puede necesitar configuración: Tools → Global Options → Code → Use native pipe)
+```
+
+
+

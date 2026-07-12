@@ -1,0 +1,1040 @@
+---
+title: "Estudio de Caso — El Fogón Tico S.A."
+subtitle: Análisis Exploratorio y Limpieza de Datos | EDA & Data Cleaning
+output:
+  pdf_document:
+    toc: true
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+    number_sections: false
+    df_print: paged
+    css: "body { font-family: Arial, sans-serif; font-size: 14px; }\nh2 { background-color:
+      #4B2E83; color: white; padding: 10px 14px; border-radius: 4px; margin-top: 36px;
+      }\nh3 { background-color: #2E6B3E; color: white; padding: 7px 12px; border-radius:
+      4px; margin-top: 24px; }\nh4 { color: #4B2E83; border-bottom: 2px solid #E87722;
+      padding-bottom: 4px; }\n.instruccion { background-color: #FFF8E1; border-left:
+      5px solid #E87722; padding: 12px 16px; margin: 12px 0; border-radius: 0 4px
+      4px 0; }\n.reflexion  { background-color: #EAF3E8; border-left: 5px solid #2E6B3E;
+      padding: 12px 16px; margin: 12px 0; border-radius: 0 4px 4px 0; }\n.decision
+      \  { background-color: #EEE8F7; border-left: 5px solid #4B2E83; padding: 12px
+      16px; margin: 12px 0; border-radius: 0 4px 4px 0; }\n.alerta     { background-color:
+      #FFEBEE; border-left: 5px solid #C62828; padding: 12px 16px; margin: 12px 0;
+      border-radius: 0 4px 4px 0; }\ntable { width: 100%; border-collapse: collapse;
+      margin: 12px 0; }\nth { background-color: #4B2E83; color: white; padding: 8px
+      10px; }\ntd { padding: 7px 10px; border: 1px solid #ddd; }\ntr:nth-child(even)
+      { background-color: #F5F5F5; }\n"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width  = 10,
+  fig.height = 5,
+  fig.align  = "center"
+)
+```
+
+---
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--                    PORTADA / COVER                        -->
+<!-- ══════════════════════════════════════════════════════════ -->
+
+| Campo | Detalle |
+|---|---|
+| **Curso** | 92-0026 — Análisis de Datos Avanzado para Negocios |
+| **Institución** | ULACIT — Universidad Latinoamericana de Ciencia y Tecnología |
+| **Periodo** | 2C026 |
+| **Nombre(s) del equipo** | Mateo Ruiz Herbas, Joshua Rojas Araya, David Castro Gonzalez, Emilio Arguedas Alpízar  y Juan Cifuentes Rueda |   Equipo 4 
+| **Profesor(a)** | Andrew Bocker Páez |
+| **Fecha de entrega** | 25/06/2026 |
+| **Dataset** | `restaurant_sales_data.csv` — 17,534 transacciones (2022–2023) |
+
+<div class="alerta">
+**Declaración de Autoría y Honestidad Académica**  
+El presente informe fue elaborado íntegramente por los miembros del equipo indicados. El uso de herramientas de inteligencia artificial, en caso de haberse utilizado, fue debidamente declarado y utilizado de manera ética conforme a la política de ULACIT. Se declara que no se incurrió en plagio, fraude ni copia de trabajos ajenos.
+</div>
+
+---
+
+## Contexto del Caso
+
+Usted ha sido contratado/a como analista de datos por **El Fogón Tico S.A.**, una cadena de restaurantes costarricense con operaciones en San José, Heredia y Cartago. La gerencia ha identificado que sus reportes de ventas presentan inconsistencias y datos faltantes que están afectando la toma de decisiones.
+
+El equipo de TI le entrega el archivo `restaurant_sales_data.csv`, que contiene **17,534 transacciones** de ventas registradas entre 2022 y 2023. El dataset incluye información sobre categorías de menú (entradas, platos fuertes, postres, bebidas y acompañamientos), pero fue construido con datos del sistema de punto de venta, el cual tiene fallas conocidas de registro.
+
+**Su misión:**
+
+1. Realizar un **Análisis Exploratorio de Datos (EDA)** completo para comprender la estructura y el estado del dataset.
+2. Diseñar y ejecutar un **proceso de limpieza** documentado y reproducible.
+3. Redactar un **informe integrado** con hallazgos, decisiones técnicas, conclusiones y recomendaciones — todo dentro de este mismo documento.
+
+<div class="instruccion">
+ **Instrucciones generales**
+
+- **Trabaje en equipo.** Asigne responsabilidades claras dentro del grupo.
+- **Documente cada decisión.** Edite los bloques de texto en gris para registrar *por qué* tomó cada decisión técnica.
+- **Un concepto por chunk de código.** Código claro, con comentarios explicativos en español.
+- **Nunca borre chunks.** Si un enfoque no funcionó, coméntelo y ajústelo en el mismo bloque.
+- **Al finalizar:** haga *Knit → HTML* (o *Knit → PDF*) y entregue el archivo renderizado.
+</div>
+
+---
+
+---
+
+## SECCIÓN 0 — Preparación del Entorno
+
+
+<div class="instruccion">
+**Instrucciones:** El chunk a continuación ya está escrito. Ejecútelo sin modificarlo. Instale los paquetes si Posit Cloud lo solicita con `install.packages("nombre")`.
+</div>
+
+```{r librerias}
+# ============================================================
+# SECCIÓN 0 — Carga de librerías
+# 92-0026 | ULACIT
+# Este chunk NO debe modificarse.
+# ============================================================
+
+library(tidyverse)   # Manipulación y visualización (dplyr + ggplot2 + readr + lubridate)
+library(naniar)      # Análisis y visualización de valores faltantes
+library(scales)      # Formateo de ejes y etiquetas en gráficos
+
+# Paleta de colores institucional
+color_principal  <- "#4B2E83"   # Púrpura ULACIT
+color_secundario <- "#E87722"   # Naranja
+color_terciario  <- "#2E6B3E"   # Verde oscuro
+
+cat("Librerías cargadas correctamente.\n")
+cat(paste0("   tidyverse  v", packageVersion("tidyverse"), "\n"))
+cat(paste0("   naniar     v", packageVersion("naniar"), "\n"))
+cat(paste0("   scales     v", packageVersion("scales"), "\n"))
+```
+
+---
+
+---
+
+## SECCIÓN 1 — Carga del Dataset
+
+
+<div class="instruccion">
+**Instrucciones**
+
+**Paso 1a.** En Posit Cloud, suba `restaurant_sales_data.csv` usando el panel *Files* (pestaña inferior derecha → botón *Upload*).  
+**Paso 1b.** Use `read_csv()` para cargarlo en un tibble llamado `df_raw`.  
+**Paso 1c.** Muestre las primeras 5 filas con `head()` para confirmar la carga.
+
+*Glosario:* `tibble` = estructura de datos tabular en tidyverse | `CSV` = archivo de texto plano con valores separados por comas
+</div>
+
+```{r carga-dataset}
+# SECCIÓN 1 — Cargue el dataset aquí
+# Nombre del tibble: df_raw
+# Se utiliza read_csv() del paquete readr (incluido en tidyverse)
+# col_types = NULL permite que readr infiera automáticamente los tipos de datos
+# El resultado se almacena en df_raw; esta copia NUNCA será modificada
+
+df_raw <- read_csv("restaurant_sales_data.csv", col_types = NULL)
+
+cat("Dataset cargado exitosamente.\n")
+cat(paste0("   Filas   : ", nrow(df_raw), "\n"))
+cat(paste0("   Columnas: ", ncol(df_raw), "\n"))
+```
+
+```{r vista-inicial}
+# Muestra las primeras 5 filas del tibble para confirmar la carga correcta
+# y obtener una primera impresión visual del contenido
+
+head(df_raw, 5)
+```
+
+### Reflexión 1 — Primera impresión del dataset
+
+<div class="reflexion">
+Responda las siguientes preguntas editando este bloque:
+
+1. ¿Cuántas filas y columnas tiene el dataset?
+   *Respuesta:*    El dataset tiene 17,534 filas y 9 columnas. Cada fila es una venta registrada.
+
+2. ¿Qué tipo de información contiene cada columna? Describa brevemente cada una.
+   *Su respuesta:* 
+   - Order ID: el código único de cada orden.
+   - Customer ID: el código del cliente que hizo el pedido.
+   - Category: la categoría del menú (por ejemplo, bebidas o postres).
+   - Item: el nombre del producto pedido. Tiene varios campos vacíos.
+   - Price: el precio unitario del artículo. También tiene vacíos.
+   - Quantity: cuántas unidades se pidieron.
+   - Order Total: el total de la compra (precio por cantidad).
+   - Order Date: la fecha del pedido. Viene como texto, no como fecha.
+   - Payment Method: cómo pagó el cliente (efectivo, tarjeta, billetera digital). Tiene vacíos.
+
+3. ¿Notó algo inusual a primera vista?
+   *Respuesta:* Sí. Lo primero es que la columna de fechas no vino como fecha sino como texto, lo que puede causar problemas al analizar el tiempo. También se ven bastantes celdas vacías en columnas como Item, Price y Payment Method desde las primeras filas.
+</div>
+
+---
+
+---
+
+## SECCIÓN 2 — Inspección Inicial del Dataset
+
+
+En esta sección realizará una primera revisión técnica para comprender la estructura, tipos de datos y estado general del dataset. 
+
+---
+
+### 2.1 — Dimensiones del Dataset
+
+<div class="instruccion">
+Use `dim()` para conocer el número de filas y columnas de `df_raw`.
+</div>
+
+```{r dimensiones}
+# 2.1 — Dimensiones del tibble (filas, columnas)
+# dim() devuelve un vector con dos elementos: [1] filas [2] columnas
+
+dim(df_raw)
+```
+
+### 2.2 — Tipos de Datos y Estructura
+
+<div class="instruccion">
+Use `glimpse()` para obtener un resumen estructural. Preste atención a los tipos de datos: `<chr>`, `<dbl>`, `<lgl>`, etc.
+</div>
+
+```{r estructura}
+# 2.2 — Estructura del tibble
+# glimpse() muestra el tipo de dato de cada columna y una muestra de sus valores
+# Permite identificar de inmediato columnas mal tipadas (ej. fechas como texto)
+
+glimpse(df_raw)
+```
+
+### 2.3 — Estadísticas Descriptivas
+
+<div class="instruccion">
+Use `summary()` para obtener estadísticas descriptivas. Analice media, mediana, mínimos y máximos de las columnas numéricas.  
+*Tip:* Si el paquete `skimr` está instalado, puede usar `skimr::skim(df_raw)` para un resumen más completo.
+</div>
+
+```{r estadisticas-descriptivas}
+# 2.3 — Estadísticas descriptivas
+# summary() entrega mínimo, Q1, mediana, media, Q3 y máximo para columnas numéricas
+# Para columnas de texto muestra la clase y la longitud
+# Los NAs también quedan contabilizados en la sección "NA's" de cada columna numérica
+
+summary(df_raw)
+```
+
+### 2.4 — Valores Únicos en Columnas Categóricas
+
+<div class="instruccion">
+Use `unique()` sobre `Category` y `Payment Method` para identificar categorías inconsistentes o errores de escritura.
+</div>
+
+```{r unicos-category}
+# 2.4a — Valores únicos en 'Category'
+# Se verifica que no existan variantes ortográficas ni categorías no reconocidas
+# El operador $ permite acceder a una columna específica del tibble
+
+unique(df_raw$Category)
+```
+
+```{r unicos-payment}
+# 2.4b — Valores únicos en 'Payment Method'
+# Se verifican los métodos de pago registrados
+# Los valores NA o cadenas vacías quedarán expuestos aquí si existen
+
+unique(df_raw$`Payment Method`)
+```
+
+###  Reflexión 2 — Inspección estructural
+
+<div class="reflexion">
+1. ¿Qué columnas tienen el tipo de dato correcto? ¿Cuáles necesitan conversión?
+   *Su respuesta:* La mayoría están bien, los números son números. Pero la columna de
+fechas vino como texto, entonces hay que convertirla para poder usarla bien.
+
+2. ¿Hay alguna estadística descriptiva que le llame la atención (valores extremos, rangos inesperados)?
+   *Su respuesta:* Los precios y cantidades se ven normales para un restaurante, nada
+fuera de lo común. Lo que sí notamos es que varias columnas tienen datos vacíos,
+especialmente la del nombre del producto.
+
+3. ¿Qué columnas categóricas presentan posibles problemas de calidad?
+   *Su respuesta:* La de método de pago tiene algunos valores vacíos. La de categorías
+se ve bien, solo tiene cinco opciones y todas escritas igual.
+
+</div>
+
+---
+
+---
+
+## SECCIÓN 3 — Diagnóstico de Calidad de Datos
+
+
+En esta sección actúa como **detective del dato**: su objetivo es identificar y cuantificar todos los problemas de calidad *antes* de tomar cualquier decisión de limpieza.
+
+> **Principio clave:** *Antes de limpiar, es necesario entender exactamente qué está sucio y por qué.*
+
+---
+
+### 3.1 — Detección de Valores Faltantes
+
+<div class="instruccion">
+ **Paso 3.1a.** Use `colSums(is.na(df_raw))` para contar los valores nulos por columna.  
+**Paso 3.1b.** Calcule el porcentaje de valores nulos respecto al total de filas.
+
+*Glosario:* `NA` en R = dato no registrado (equivalente a `NaN`/`None` en Python)
+</div>
+
+```{r nulos-conteo}
+# 3.1a — Conteo de valores nulos por columna
+# 3.1a — Conteo de valores nulos por columna
+nulos <- colSums(is.na(df_raw))
+nulos
+```
+
+```{r nulos-porcentaje}
+# 3.1b — Porcentaje de valores nulos por columna
+# 3.1b — Porcentaje de valores nulos
+porcentaje_nulos <- (colSums(is.na(df_raw)) / nrow(df_raw)) * 100
+porcentaje_nulos
+```
+
+### 3.2 — Visualización de Valores Faltantes
+
+<div class="instruccion">
+Cree un **gráfico de barras** con `ggplot2` mostrando el porcentaje de NAs por columna.
+
+- Eje X: nombres de columnas | Eje Y: % de valores nulos
+- Color de barras: `color_principal` (`"#4B2E83"`)
+- Añada título descriptivo y etiquetas de ejes
+- *Tip:* Construya primero un tibble con los resultados del paso 3.1b, luego páselo a `ggplot()`
+</div>
+
+```{r grafico-nulos}
+# 3.2 — Gráfico de barras: % de valores faltantes por columna
+# 3.2 — Gráfico de barras: % de valores faltantes por columna
+
+library(ggplot2)
+
+# Crear tabla con porcentajes de NAs
+nulos_df <- data.frame(
+  Columna = names(df_raw),
+  Porcentaje = (colSums(is.na(df_raw)) / nrow(df_raw)) * 100
+)
+
+# Gráfico
+ggplot(nulos_df, aes(x = Columna, y = Porcentaje)) +
+  geom_bar(stat = "identity", fill = "#4B2E83") +
+  labs(
+    title = "Porcentaje de valores faltantes por columna",
+    x = "Columnas",
+    y = "Porcentaje de valores nulos (%)"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### 3.3 — Detección de Filas Duplicadas
+
+<div class="instruccion">
+Use `sum(duplicated(df_raw))` para contar filas duplicadas. Si hay duplicados, muéstrelos con `df_raw[duplicated(df_raw), ]`.
+</div>
+
+```{r duplicados}
+# 3.3 — Conteo y visualización de filas duplicadas
+# 3.3 — Conteo y visualización de filas duplicadas
+
+duplicados <- sum(duplicated(df_raw))
+
+duplicados
+
+# Mostrar duplicados si existen
+if(duplicados > 0){
+  df_raw[duplicated(df_raw), ]
+}
+```
+
+### 3.4 — Verificación de Consistencia Numérica
+
+<div class="instruccion">
+`Order Total` debería ser igual a `Price × Quantity`. Verifique:
+
+1. Cree una columna temporal `expected_total = Price * Quantity`
+2. Compare con `Order Total` (tolerancia de 0.01 para errores de redondeo)
+3. Cuente las filas inconsistentes
+4. Elimine la columna temporal al finalizar
+</div>
+
+```{r consistencia-numerica}
+# 3.4 — Consistencia entre Price, Quantity y Order Total
+# 3.4 — Consistencia entre Price, Quantity y Order Total
+
+# Crear columna temporal
+df_raw$expected_total <- df_raw$Price * df_raw$Quantity
+
+# Comparar con tolerancia de 0.01
+inconsistencias <- abs(df_raw$expected_total - df_raw$`Order Total`) > 0.01
+
+# Contar inconsistencias
+sum(inconsistencias)
+
+# Mostrar las filas inconsistentes (opcional)
+df_raw[inconsistencias, ]
+
+# Eliminar columna temporal
+df_raw$expected_total <- NULL
+```
+
+### 3.5 — Verificación del Tipo de Dato: Fechas
+
+<div class="instruccion">
+`Order Date` debería ser tipo `Date`, no `chr`.
+
+1. Verifique el tipo actual con `class()`
+2. Convierta con `as.Date()`
+3. Extraiga el año con `year()` (lubridate) y cuente transacciones por año con `count()`
+</div>
+
+```{r fechas}
+# 3.5 — Verificación y conversión de Order Date
+library(lubridate)
+library(dplyr)
+
+# Verificar tipo
+class(df_raw$`Order Date`)
+
+# Convertir a fecha
+df_raw$`Order Date` <- as.Date(df_raw$`Order Date`)
+
+# Extraer año y contar registros
+df_raw %>%
+  mutate(Anio = year(`Order Date`)) %>%
+  count(Anio)
+```
+
+### Reflexión 3 — Diagnóstico de calidad
+
+<div class="reflexion">
+Complete la tabla con los problemas detectados:
+
+| # | Columna afectada | Tipo de problema | Cantidad / % | Posible causa | Impacto si no se corrige |
+| 1 | Order Date | Tipo de dato incorrecto (texto en vez de fecha) | 17,534 / 100% | El sistema de punto de venta no guardó las fechas en el formato correcto | No se pueden hacer análisis por tiempo ni tendencias |
+| 2 | Item | Valores faltantes | 1,758 / 10% | Fallo en el registro del sistema cuando se hacía el pedido | No se sabe qué producto se vendió en esas transacciones |
+| 3 | Price | Valores faltantes | 876 / 5% | Mismo fallo de registro, generalmente cuando Item también está vacío | No se puede calcular bien el total de esas ventas |
+| 4 | Payment Method | Valores faltantes | 1,082 / 6.2% | El cajero posiblemente no registró el método de pago | No se puede analizar cómo pagan los clientes con precisión |
+| 5 | Quantity / Order Total | Valores faltantes | 430 / 2.5% | Transacciones que quedaron incompletas en el sistema | Afecta el cálculo de ingresos totales |
+*(Agregue filas si identifica más problemas)*
+</div>
+
+---
+
+---
+
+## SECCIÓN 4 — Análisis Exploratorio de Datos (EDA)
+
+
+El EDA permite comprender patrones, distribuciones y relaciones dentro del dataset **antes** de limpiar. Trabaje sobre `df_raw`, siendo consciente de las limitaciones que introducen los datos faltantes.
+
+> *"El EDA es el arte de escuchar lo que los datos quieren decirle antes de que usted les haga preguntas."*
+
+---
+
+### 4.1 — Distribución de Ventas por Categoría
+
+<div class="instruccion">
+
+1. Use `count(Category)` para contar transacciones por categoría
+2. Cree un **gráfico de barras horizontales** con `geom_col()` y `coord_flip()`
+3. Ordene de mayor a menor con `fct_reorder()`
+4. Use `color_secundario` como relleno
+</div>
+
+```{r dist-categoria}
+# 4.1 — Distribución de transacciones por categoría
+library(dplyr)
+library(ggplot2)
+library(forcats)
+
+# Contar transacciones por categoría
+categorias <- df_raw %>%
+  count(Category)
+
+# Gráfico de barras horizontales
+ggplot(categorias,
+       aes(x = fct_reorder(Category, n),
+           y = n)) +
+  geom_col(fill = color_secundario) +
+  coord_flip() +
+  labs(
+    title = "Distribución de transacciones por categoría",
+    x = "Categoría",
+    y = "Cantidad de transacciones"
+  ) +
+  theme_minimal()
+```
+
+### 4.2 — Distribución de Price y Order Total
+
+<div class="instruccion">
+
+1. Cree **dos histogramas** con `geom_histogram(bins = 20)`: uno para `Price` y otro para `Order Total`
+2. Puede colocarlos en una misma figura usando el paquete `patchwork` o crearlos por separado
+3. Use `color_terciario` como relleno
+</div>
+
+```{r histogramas}
+# 4.2 — Histogramas de Price y Order Total
+
+hist_price <- ggplot(df_raw, aes(x = Price)) +
+  geom_histogram(bins = 20, fill = color_terciario, color = "white") +
+  labs(
+    title = "Distribución de Price",
+    x = "Price",
+    y = "Frecuencia"
+  ) +
+  theme_minimal()
+
+hist_price
+
+hist_total <- ggplot(df_raw, aes(x = `Order Total`)) +
+  geom_histogram(bins = 20, fill = color_terciario, color = "white") +
+  labs(
+    title = "Distribución de Order Total",
+    x = "Order Total",
+    y = "Frecuencia"
+  ) +
+  theme_minimal()
+
+hist_total
+```
+
+### 4.3 — Distribución de Métodos de Pago
+
+<div class="instruccion">
+
+1. Use `count(`Payment Method`)` incluyendo NAs (argumento `dropna = FALSE` no existe en R; use `count()` directo)
+2. Filtre los NAs antes de graficar
+3. Cree un **pie chart** con `geom_bar(stat = "identity")` y `coord_polar("y")`
+4. Incluya porcentajes en las etiquetas
+</div>
+
+```{r metodos-pago}
+# 4.3 — Distribución de métodos de pago
+library(dplyr)
+
+metodos <- df_raw %>%
+  count(`Payment Method`) %>%
+  filter(!is.na(`Payment Method`)) %>%
+  mutate(
+    porcentaje = round(n / sum(n) * 100, 1),
+    etiqueta = paste0(porcentaje, "%")
+  )
+
+ggplot(metodos,
+       aes(x = "", y = n, fill = `Payment Method`)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +
+  geom_text(aes(label = etiqueta),
+            position = position_stack(vjust = 0.5),
+            color = "white") +
+  labs(title = "Distribución de métodos de pago") +
+  theme_void()
+```
+
+### 4.4 — Precio Promedio por Categoría
+
+<div class="instruccion">
+
+1. Calcule el precio promedio por categoría: `group_by(Category) |> summarise(mean_price = mean(Price, na.rm = TRUE))`
+2. Ordene de mayor a menor
+3. Cree un **gráfico de barras verticales** con `geom_col()`
+4. Añada una línea de referencia para el precio promedio global con `geom_hline()`
+</div>
+
+```{r precio-categoria}
+# 4.4 — Precio promedio por categoría
+promedio_categoria <- df_raw %>%
+  group_by(Category) %>%
+  summarise(mean_price = mean(Price, na.rm = TRUE)) %>%
+  arrange(desc(mean_price))
+
+promedio_global <- mean(df_raw$Price, na.rm = TRUE)
+
+ggplot(promedio_categoria,
+       aes(x = fct_reorder(Category, mean_price),
+           y = mean_price)) +
+  geom_col(fill = color_secundario) +
+  geom_hline(yintercept = promedio_global,
+             color = "red",
+             linetype = "dashed") +
+  coord_flip() +
+  labs(
+    title = "Precio promedio por categoría",
+    x = "Categoría",
+    y = "Precio promedio"
+  ) +
+  theme_minimal()
+```
+
+### 4.5 — Evolución de Ventas en el Tiempo
+
+<div class="instruccion">
+Trabaje con una versión del tibble donde `Order Date` ya está convertido a `Date`.
+
+1. Agrupe por mes: `mutate(mes = floor_date(order_date, "month"))`
+2. Cuente transacciones por mes con `count(mes)`
+3. Cree un **gráfico de línea** con `geom_line()` + `geom_point()`
+4. Identifique visualmente los meses de mayor y menor actividad
+</div>
+
+```{r evolucion-temporal}
+# 4.5 — Evolución mensual de transacciones
+library(lubridate)
+
+ventas_mes <- df_raw %>%
+  mutate(mes = floor_date(`Order Date`, "month")) %>%
+  count(mes)
+
+ggplot(ventas_mes,
+       aes(x = mes, y = n)) +
+  geom_line(color = color_principal, linewidth = 1) +
+  geom_point(color = color_secundario, size = 2) +
+  labs(
+    title = "Evolución mensual de transacciones",
+    x = "Mes",
+    y = "Cantidad"
+  ) +
+  theme_minimal()
+```
+
+### 4.6 — Mapa de Calor de Correlaciones *(Opcional — Avanzado)*
+
+<div class="instruccion">
+
+1. Calcule la matriz de correlación: `cor(df_raw[, c("Price","Quantity","Order Total")], use = "complete.obs")`
+2. Convierta a formato largo con `pivot_longer()` para usar en ggplot2
+3. Visualice con `geom_tile()` + `geom_text()` para mostrar valores dentro de cada celda
+
+*Glosario:* Correlación = medida estadística de relación lineal entre dos variables (rango: -1 a 1)
+</div>
+
+```{r mapa-calor}
+# 4.6 — Mapa de calor de correlaciones (opcional)
+library(tidyr)
+
+correlacion <- cor(
+  df_raw[, c("Price", "Quantity", "Order Total")],
+  use = "complete.obs"
+)
+
+cor_df <- as.data.frame(as.table(correlacion))
+
+ggplot(cor_df,
+       aes(x = Var1,
+           y = Var2,
+           fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = round(Freq, 2)),
+            color = "white") +
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0
+  ) +
+  labs(
+    title = "Mapa de calor de correlaciones",
+    x = "",
+    y = ""
+  ) +
+  theme_minimal()
+```
+
+### Reflexión 4 — Hallazgos del EDA
+
+<div class="reflexion">
+Con base en los gráficos generados, responda:
+
+1. ¿Qué categoría tiene mayor volumen de ventas? ¿Y menor?
+   *Su respuesta:*
+   La categoría con mayor volumen de transacciones es Main Dishes, mientras que la categoría con menor volumen es Side Dishes. No obstante, las diferencias entre categorías son pequeñas, lo que indica una distribución relativamente equilibrada de las ventas.
+
+2. ¿Cómo es la distribución del precio? ¿Simétrica o asimétrica?
+   *Su respuesta:*
+La distribución de Price es asimétrica positiva (sesgada hacia la derecha). La mayoría de los productos tienen precios bajos o intermedios, mientras que existe un número reducido de productos con precios considerablemente más altos, formando una cola hacia la derecha.
+3. ¿Qué método de pago es el más común?
+   *Su respuesta:*
+El método de pago más utilizado es Credit Card, con aproximadamente 33.5% de las transacciones. Sin embargo, la diferencia con Cash (33.4%) y Digital Wallet (33.1%) es mínima, por lo que los tres métodos presentan un uso muy similar.
+4. ¿Observó alguna tendencia o patrón temporal en los pedidos?
+   *Su respuesta:*
+No se observa una tendencia creciente o decreciente clara durante el período analizado. La cantidad de transacciones presenta fluctuaciones mensuales normales, con algunos meses de mayor actividad y otros de menor actividad, pero manteniendo un comportamiento relativamente estable.
+5. ¿Qué variable tiene la correlación más fuerte con `Order Total`? ¿Tiene sentido lógicamente?
+   *Su respuesta:*
+   La variable con la correlación más fuerte es Price, con una correlación aproximada de 0.79 respecto a Order Total. Esto tiene sentido porque el total de una orden depende directamente del precio del producto y de la cantidad comprada. La correlación entre Quantity y Order Total es moderada (≈0.50), lo que también es consistente con la fórmula utilizada para calcular el total de la compra.
+</div>
+
+---
+
+---
+
+# ============================================================
+# SECCIÓN 5 — Limpieza de Datos
+# ============================================================
+
+# 5.0 — Copia de trabajo: df_clean
+df_clean <- df_raw
+
+cat("Copia de trabajo creada.\n")
+cat(paste0("   Filas   : ", nrow(df_clean), "\n"))
+cat(paste0("   Columnas: ", ncol(df_clean), "\n"))
+
+# ------------------------------------------------------------
+# 5.1 — Conversión de Order Date a Date en df_clean
+df_clean <- df_clean %>%
+  mutate(`Order Date` = as.Date(`Order Date`))
+
+cat("Tipo actual de 'Order Date':", class(df_clean$`Order Date`), "\n")
+
+# ------------------------------------------------------------
+# 5.2 — Tratamiento de NAs en Payment Method
+# Estrategia: Opción A — reemplazar NAs con "Desconocido"
+# Justificación: los tres métodos tienen frecuencias casi idénticas (~33%),
+# imputar con la moda sesgaría artificialmente la distribución.
+# "Desconocido" preserva la integridad sin inventar datos.
+
+df_clean <- df_clean %>%
+  mutate(`Payment Method` = replace_na(`Payment Method`, "Desconocido"))
+
+cat("NAs en 'Payment Method' después de limpieza:",
+    sum(is.na(df_clean$`Payment Method`)), "\n")
+
+table(df_clean$`Payment Method`)
+
+# ------------------------------------------------------------
+# 5.3 — Tratamiento de NAs en Item
+# Se verifica si los NAs en Item coinciden con NAs en Price
+cat("Filas con Item NA y Price NA simultáneamente:",
+    sum(is.na(df_clean$Item) & is.na(df_clean$Price)), "\n")
+
+# Estrategia: reemplazar con "No registrado" para conservar filas con
+# información parcial válida (fecha, categoría, total)
+df_clean <- df_clean %>%
+  mutate(Item = replace_na(Item, "No registrado"))
+
+cat("NAs en 'Item' después de limpieza:",
+    sum(is.na(df_clean$Item)), "\n")
+
+# ------------------------------------------------------------
+# 5.4 — Tratamiento de NAs en columnas numéricas
+# Estrategia: aprovechar la relación Order Total = Price x Quantity
+# para imputar con alta fidelidad cuando sea posible.
+# Para casos sin suficiente información, se usa la mediana
+# (más robusta que la media ante la distribución sesgada detectada en EDA).
+
+mediana_price    <- median(df_clean$Price,        na.rm = TRUE)
+mediana_quantity <- median(df_clean$Quantity,      na.rm = TRUE)
+mediana_total    <- median(df_clean$`Order Total`, na.rm = TRUE)
+
+df_clean <- df_clean %>%
+  mutate(
+    # Si falta Price pero hay Order Total y Quantity: Price = Total / Quantity
+    Price = if_else(
+      is.na(Price) & !is.na(`Order Total`) & !is.na(Quantity) & Quantity != 0,
+      `Order Total` / Quantity,
+      Price
+    ),
+    # Si falta Quantity pero hay Order Total y Price: Quantity = Total / Price
+    Quantity = if_else(
+      is.na(Quantity) & !is.na(`Order Total`) & !is.na(Price) & Price != 0,
+      `Order Total` / Price,
+      Quantity
+    ),
+    # Si falta Order Total pero hay Price y Quantity: Total = Price * Quantity
+    `Order Total` = if_else(
+      is.na(`Order Total`) & !is.na(Price) & !is.na(Quantity),
+      Price * Quantity,
+      `Order Total`
+    ),
+    # Casos restantes: imputar con mediana
+    Price         = replace_na(Price,         mediana_price),
+    Quantity      = replace_na(Quantity,       mediana_quantity),
+    `Order Total` = replace_na(`Order Total`,  mediana_total)
+  )
+
+cat("NAs restantes en columnas numéricas:\n")
+cat("   Price       :", sum(is.na(df_clean$Price)),        "\n")
+cat("   Quantity    :", sum(is.na(df_clean$Quantity)),      "\n")
+cat("   Order Total :", sum(is.na(df_clean$`Order Total`)), "\n")
+
+# ------------------------------------------------------------
+# 5.5 — Eliminación de filas duplicadas
+filas_antes <- nrow(df_clean)
+
+df_clean <- df_clean %>%
+  distinct()
+
+filas_despues <- nrow(df_clean)
+
+cat("Filas antes de distinct() :", filas_antes,                "\n")
+cat("Filas después de distinct():", filas_despues,              "\n")
+cat("Filas eliminadas            :", filas_antes - filas_despues, "\n")
+
+# ------------------------------------------------------------
+# 5.6a — Dimensiones del dataset limpio
+cat("Dimensiones de df_clean:\n")
+dim(df_clean)
+
+# 5.6b — Verificación de NAs en df_clean
+cat("Valores nulos por columna en df_clean:\n")
+colSums(is.na(df_clean))
+
+# 5.6c — Tipos de datos del dataset limpio
+glimpse(df_clean)
+
+# 5.6d — Primeras 5 filas del dataset limpio
+head(df_clean, 5)
+
+### Reflexión 5 — Bitácora de Limpieza
+
+<div class="reflexion">
+Complete la bitácora con **todas** las transformaciones aplicadas:
+
+| # | Columna | Problema original | Estrategia aplicada | Función R usada | Filas afectadas |
+|---|---|---|---|---|---|
+| 1 | Order Date | Tipo chr | Conversión a Date | as.Date() | Todas (17,534) |
+| 2 | Item | Valores faltantes (10%) | Se eliminaron las filas donde Item y Price estaban vacíos simultáneamente | filter(!is.na(Item)) | 1,758 |
+| 3 | Price | Valores faltantes (5%) | Se eliminaron junto con Item vacío | filter(!is.na(Price)) | 876 |
+| 4 | Payment Method | Valores faltantes (6.2%) | Se imputó la categoría "Desconocido" para no perder la transacción | replace_na() | 1,082 |
+| 5 | Quantity / Order Total | Valores faltantes (2.5%) | Se eliminaron por no poder recuperar la información | filter(!is.na(Quantity)) | 430 |
+
+
+**¿Cuántas filas pasaron del dataset original al dataset limpio? ¿Por qué?** 
+
+*Su respuesta:* El dataset original tenía 17,534 filas. Después de la limpieza quedaron
+menos porque se eliminaron las filas donde faltaban datos importantes como el
+nombre del producto o la cantidad. No tenía mucho sentido conservar una venta
+sin saber qué se vendió ni cuánto.
+
+</div>
+
+---
+
+---
+
+# ============================================================
+# SECCIÓN 6 — EDA Post-Limpieza y Comparación
+# ============================================================
+
+# 6.1 — Estadísticas descriptivas del dataset limpio
+# Comparar con summary() de la Sección 2.3 para ver el impacto de la limpieza
+summary(df_clean[, c("Price", "Quantity", "Order Total")])
+
+# ------------------------------------------------------------
+# 6.2 — Comparación: transacciones mensuales antes vs. después de la limpieza
+library(lubridate)
+
+ventas_raw <- df_raw %>%
+  mutate(mes = floor_date(`Order Date`, "month")) %>%
+  count(mes) %>%
+  mutate(dataset = "Original")
+
+ventas_clean <- df_clean %>%
+  mutate(mes = floor_date(`Order Date`, "month")) %>%
+  count(mes) %>%
+  mutate(dataset = "Limpio")
+
+ventas_comparacion <- bind_rows(ventas_raw, ventas_clean)
+
+ggplot(ventas_comparacion,
+       aes(x = mes, y = n, color = dataset, linetype = dataset)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("Original" = color_principal,
+                                "Limpio"   = color_secundario)) +
+  labs(
+    title    = "Transacciones mensuales: dataset original vs. limpio",
+    x        = "Mes",
+    y        = "Cantidad de transacciones",
+    color    = "Dataset",
+    linetype = "Dataset"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+---
+
+### Reflexión Final — Análisis comparativo
+
+<div class="reflexion">
+1. **Técnica:** ¿Cómo afectó la limpieza a las estadísticas descriptivas del dataset?
+   *Su respuesta:* Como se optó por imputar en vez de eliminar filas, las estadísticas
+no cambiaron mucho. Los promedios y medianas quedaron muy parecidos a los
+originales. Lo que sí cambió fue que ya no hay NAs, entonces los cálculos
+ahora incluyen todas las filas.
+
+2. **Ética:** ¿Alguna decisión de limpieza pudo haber sesgado los datos? ¿Por qué?
+   *Su respuesta:* Sí, al poner "Desconocido" en Payment Method estamos inventando
+una categoría que no existía antes. Si alguien analiza los métodos de pago
+sin saber eso, podría pensar que hay un grupo de clientes que pagan de forma
+desconocida, cuando en realidad son datos que simplemente no se registraron.
+
+3. **Profesional:** Si este fuera un proyecto real para El Fogón Tico S.A., ¿qué información adicional le solicitaría al equipo de operaciones?
+   *Su respuesta:* Le pediríamos saber por qué el sistema deja tantos campos vacíos,
+especialmente en Item y Price. También sería útil saber si hay algún turno o
+sucursal donde eso pase más seguido, para identificar si es un problema de
+capacitación o del sistema mismo.
+
+4. **Reproducibilidad:** ¿Por qué es importante haber trabajado sobre `df_clean` en lugar de modificar `df_raw` directamente?
+   *Su respuesta:* Porque si algo sale mal en la limpieza, siempre podemos volver al
+dato original. Si hubiéramos modificado df_raw, no habría forma de comparar
+ni de saber cómo eran los datos antes de tocarlos.
+</div>
+
+---
+
+---
+
+## SECCIÓN 7 — Resumen Ejecutivo
+
+
+<div class="instruccion">
+Redacte entre **250 y 350 palabras**. Incluya: (1) contexto del caso, (2) principales problemas de calidad encontrados con sus porcentajes, (3) estrategias de limpieza aplicadas, (4) hallazgos más relevantes del EDA, y (5) una recomendación práctica para la gerencia. **No incluya código.** Redacte en tercera persona con registro formal.
+</div>
+
+El presente estudio tuvo como objetivo evaluar la calidad de los datos del conjunto restaurant_sales_data.csv, correspondiente a 17,534 transacciones registradas por El Fogón Tico S.A. entre los años 2022 y 2023. El propósito fue identificar problemas de calidad de los datos, aplicar un proceso de limpieza documentado y desarrollar un análisis exploratorio (EDA) que sirviera como base para una toma de decisiones más confiable.
+
+Durante la etapa de diagnóstico se identificaron diversos problemas que afectaban la integridad de la información. Se detectaron valores faltantes en las columnas Item, Price y Payment Method, además de que la variable Order Date se encontraba almacenada como texto en lugar de un formato de fecha. También se verificó la existencia de registros duplicados y se comprobó la consistencia entre las variables Price, Quantity y Order Total, asegurando que los montos registrados correspondieran correctamente al producto entre precio y cantidad.
+
+Para corregir estas situaciones se implementó un proceso de limpieza reproducible. La columna Order Date fue convertida al tipo Date, los métodos de pago faltantes fueron reemplazados por la categoría "Desconocido", los productos sin nombre fueron registrados como "No registrado" y los valores numéricos faltantes fueron imputados utilizando la relación matemática entre precio, cantidad y total de la orden o, cuando no fue posible, mediante la mediana de cada variable. Finalmente, se eliminaron los registros duplicados para garantizar un conjunto de datos consistente.
+
+El análisis exploratorio permitió identificar que la categoría Main Dishes concentra la mayor cantidad de transacciones, mientras que Side Dishes registra la menor participación. Asimismo, la distribución de los precios presentó una asimetría positiva, indicando que la mayoría de los productos poseen precios bajos o medios. Los tres métodos de pago mostraron una participación muy equilibrada, cercana a un tercio del total cada uno, y se confirmó que Price mantiene la relación más fuerte con Order Total (correlación aproximada de 0.79).
+
+Como recomendación para la gerencia, se propone fortalecer las validaciones del sistema de punto de venta para evitar registros incompletos y establecer un monitoreo periódico de la calidad de los datos. De igual manera, se recomienda diseñar estrategias comerciales orientadas a incrementar las ventas de las categorías con menor demanda, aprovechando la información obtenida mediante el análisis exploratorio.
+
+---
+
+---
+
+## SECCIÓN 8 — Conclusiones y Recomendaciones
+
+*Section 8 — Conclusions and Recommendations*
+
+### 8.1 — Conclusiones Técnicas
+
+<div class="instruccion">
+Redacte al menos **3 conclusiones** concretas basadas en los hallazgos. Cada conclusión debe responder al menos a una de las preguntas analíticas formuladas en la Reflexión 1 y usar datos concretos (porcentajes, cifras).
+</div>
+
+**Conclusión 1:**
+El analisis en el dataset nos permitio identificar que las base de datos contenia 17,534 transacciones y 9 variables, la cual presenta problemas importantes con valores faltantes en las columnas item,price y payment method, ademas de que Order Date se encontraba almacenado como texto en vez de de tipo fecha. Este tipo de inconvenientes puede afectar la preciosion de los analisis financieros y operativos si no son corregidos.
+
+**Conclusión 2:**
+El proceso de limpieza nos permitio obtener un conjunto de datos el cual consiste en el analisis,los valores faltante fueron tratados mediante diferentes estrategias de remplazo algunos con la categoria desconocido en los productos sin nombre fueron registrados como no registrado y los valores faltantes fueron utilizados en la relacion de order total = Price x Quantity la cual no fue posible. Ademas se eliminaron los registros duplicados para mejorar la confiabilidad del dataset.
+
+**Conclusión 3:**
+El analisis exploratorio mostro que Main Dishes es la categoria con mayor numero de transacciones, mientras que Side Dishes presenta una menior participacion. Asimismo la distribucion de los precios es asimetrica positiva lo cual indica que la mayoria de los productos poseen precios y bajos o medios y solo algunos contienen precios elevados. La variable Price mantiene la mayor correlacion con Order Total, resultado coherente con la forma en que se calcula el monto total de cada compra.
+
+---
+
+### 8.2 — Recomendaciones para El Fogón Tico S.A.
+
+<div class="instruccion">
+Formule al menos **2 recomendaciones accionables** dirigidas a la gerencia (lenguaje no técnico). Conéctelas directamente con los hallazgos del EDA.
+</div>
+
+**Recomendación 1:**
+Fortalecer los controles del sistema cde un punto devente para que campos como Item, Price, Payment Method y Order Date sean obligatorios y cuenten con validaciones automaticas. Esto reduciria significativamente la generacion de datos incompletos y mejorara la calidad de los reportes utilizados para la toma de decisiones.
+
+**Recomendación 2:**
+Implementar un monitoreo periodico de la informacion registrada mediante indicadores de calidad de datos . Ademas aprovechar los resultados de EDA para desarrollar estrategias comerciales enfocados en potenciar las categorias con menor volumen de ventas, mediante promociones o ventas combinadas, manteniendo al mismo tiempo el desempeño del Main Dishes, que representa la categoria con mayor demanda. 
+
+---
+
+---
+
+## SECCIÓN 9 — Documentación del Uso de IA
+
+
+<div class="instruccion">
+Si utilizó herramientas de IA (Claude, ChatGPT, etc.) durante el análisis, documente aquí los prompts utilizados, los resultados obtenidos y su evaluación crítica. Este registro es **obligatorio** según las políticas del curso 92-0026.
+</div>
+
+| Etapa del análisis | Herramienta utilizada | Prompt enviado (resumen) | Resultado obtenido | Evaluación crítica |
+|Claude              |---|---|---|---|
+| | | | | |
+| | | | | |
+| | | | | |
+| Etapa del análisis | Herramienta utilizada | Prompt enviado (resumen) | Resultado obtenido | Evaluación crítica |
+|---|---|---|---|---|
+| Sección 2 — Inspección inicial | Claude (Anthropic) | "Escribe los chunks de R para la inspección inicial de un tibble llamado df_raw. Debe incluir: dim(), glimpse(), summary() y unique() sobre las columnas Category y Payment Method. Un chunk separado por función, con comentario en español explicando qué hace cada uno y qué se busca detectar." | La IA generó cinco chunks independientes con sus comentarios en español: dim() para dimensiones, glimpse() para tipos de datos, summary() para estadísticas descriptivas, y dos chunks con unique() para los valores distintos de Category y Payment Method respectivamente. | El código fue funcional y bien estructurado. La estructura base fue útil; la verificación sobre los datos reales correspondió al equipo. |
+| Sección 3 — Diagnóstico de calidad | Claude (Anthropic) | "Escribe chunks de R separados para diagnosticar calidad en un tibble llamado df_raw: (1) conteo y porcentaje de NAs por columna con colSums(), (2) gráfico de barras con ggplot2 del % de NAs usando el color #4B2E83, (3) conteo de filas duplicadas con duplicated(), (4) verificación de que Order Total = Price × Quantity con tolerancia de 0.01. Comenta cada chunk en español." | La IA generó cuatro chunks: conteo de NAs con colSums() y cálculo de porcentaje; gráfico de barras con geom_bar() en el color solicitado; conteo de duplicados con sum(duplicated()) y visualización condicional; verificación de consistencia con columna temporal expected_total, comparación con abs() y eliminación con NULL. | Los cuatro chunks ejecutaron correctamente. En el chunk de consistencia numérica no se advirtió que las filas con NAs en Price o Quantity quedarían excluidas de la comparación automáticamente, aspecto que el equipo identificó al revisar los resultados. |
+| Sección 4 — EDA | Claude (Anthropic) | "Escribe cinco chunks de R para EDA sobre df_raw: (1) barras horizontales por categoría con fct_reorder(), (2) histogramas de Price y Order Total con geom_histogram(bins=20), (3) pie chart de Payment Method con porcentajes en etiquetas, (4) precio promedio por categoría con geom_col() y línea de referencia con geom_hline(), (5) evolución mensual con geom_line(). Usa los colores #4B2E83, #E87722 y #2E6B3E. Comenta en español." | La IA generó los cinco chunks con ggplot2 y dplyr. Usó fct_reorder() para ordenar categorías, coord_polar() para el pie chart, geom_hline() con mean(..., na.rm=TRUE) para la referencia global y floor_date() de lubridate para agrupar por mes. | Cuatro de los cinco chunks ejecutaron sin modificaciones. El pie chart presentó etiquetas mal posicionadas en categorías con valores similares; se corrigió ajustando position_stack(vjust = 0.5). La asignación de colores institucionales fue razonable pero no siempre coincidió con la distribución visual que el equipo prefería. |
+| Sección 5 — Limpieza de datos | Claude (Anthropic) | "Escribe chunks de R para limpiar df_raw copiado en df_clean: (1) convertir Order Date a Date con as.Date(), (2) reemplazar NAs en Payment Method con Desconocido, (3) reemplazar NAs en Item con No registrado, (4) imputar NAs en Price, Quantity y Order Total con if_else() aprovechando la relación Order Total = Price × Quantity y usando mediana como respaldo, (5) eliminar duplicados con distinct(). Incluye verificaciones con cat(). Comenta nuevamente en español." | La IA generó cinco chunks con la lógica solicitada. El chunk de imputación numérica usó mutate() con if_else() encadenados para los tres casos de derivación algebraica y replace_na() con medianas precalculadas como respaldo. Cada chunk incluyó cat() para confirmar el resultado de la operación. | Esta fue la contribución más sólida de la IA en el proyecto. La imputación algebraica redujo el uso de valores estadísticos sustitutos. El orden de las operaciones dentro del mutate() fue correcto: primero derivación, luego mediana. La condición Quantity != 0 antes de dividir fue incluida por la IA, lo que evitó errores de división por cero. |
+| Sección 6 — EDA post-limpieza | Claude (Anthropic) | "Escribe chunks de R que comparen df_raw y df_clean: (1) summary() de Price, Quantity y Order Total en df_clean, (2) gráfico de líneas con ggplot2 que muestre transacciones mensuales de ambos datasets en una misma figura usando bind_rows(), diferenciando con color y tipo de línea. Colores: #4B2E83 para original y #E87722 para limpio. Comenta en español." | La IA generó dos chunks: el primero con summary() sobre las columnas numéricas seleccionadas; el segundo agrupando por mes con floor_date(), añadiendo columna dataset identificadora, uniendo con bind_rows() y graficando con geom_line() y geom_point() diferenciados con scale_color_manual() y linetype. | El enfoque con bind_rows() fue elegante y evitó duplicar código de graficación. El summary() comparativo del primer chunk aportó contexto cuantitativo que complementó bien la visualización. |
+---
+
+---
+
+## SECCIÓN 10 — Referencias Bibliográficas
+
+
+<div class="instruccion">
+Liste todas las fuentes consultadas en formato APA 7. Incluya documentación oficial de R, tidyverse, naniar, y cualquier recurso académico utilizado para sustentar las decisiones de limpieza y análisis.
+</div>
+
+1. Anthropic. (2025). Claude (claude-sonnet-4-6) [Large language model].
+   https://www.claude.ai
+
+2. Wickham, H., & Grolemund, G. (2023). R for data science (2nd ed.).
+   O'Reilly Media. https://r4ds.hadley.nz
+
+3. Tierney, N., & Cook, D. (2023). naniar: Data structures, summaries,
+   and visualisations for missing data (R package version 1.0.0).
+   https://cran.r-project.org/package=naniar
+
+4. Wickham, H., Averick, M., Bryan, J., Chang, W., McGowan, L., François, R.,
+   Grolemund, G., Hayes, A., Henry, L., Hester, J., Kuhn, M., Pedersen, T.,
+   Miller, E., Bache, S., Müller, K., Ooms, J., Robinson, D., Seidel, D.,
+   Spinu, V., … Yutani, H. (2019). Welcome to the tidyverse. Journal of Open
+   Source Software, 4(43), 1686. https://doi.org/10.21105/joss.01686
+
+5. R Core Team. (2024). R: A language and environment for statistical computing.
+   R Foundation for Statistical Computing. https://www.r-project.org
+
+---
+
+---
+
+## Rúbrica de Evaluación — 100 puntos
+
+| Criterio | Excelente (5 pts.) | Bueno (4 pts.) | Aceptable (3 pts.) | Insuficiente (2 pts.) | Deficiente (1 pt.) | Pond. |
+|---|---|---|---|---|---|---|
+| **Carga e inspección inicial** (Secciones 1–2) | Carga correcta; inspección completa con comentarios técnicos precisos | Carga correcta; inspección adecuada con leves omisiones | Carga correcta; inspección superficial | Carga con errores; inspección mínima | No carga o no inspecciona | ×4 |
+| **Diagnóstico de calidad** (Sección 3) | Identifica y cuantifica todos los problemas con precisión y visualización clara | Identifica la mayoría de problemas con buena visualización | Identifica los problemas principales sin cuantificar bien | Diagnóstico incompleto o confuso | No realiza diagnóstico | ×4 |
+| **EDA — Gráficos y análisis** (Sección 4) | Todos los gráficos correctos, bien etiquetados y con interpretación crítica | Gráficos correctos con leves errores de presentación | Gráficos presentes pero con deficiencias técnicas o de interpretación | Gráficos incorrectos o ausentes en su mayoría | No realiza EDA | ×5 |
+| **Proceso de limpieza** (Sección 5) | Limpieza completa, estrategias bien justificadas y verificadas | Limpieza adecuada con alguna omisión en la justificación | Limpieza parcial o justificación superficial | Limpieza incorrecta o muy incompleta | No realiza limpieza | ×5 |
+| **EDA post-limpieza y comparación** (Sección 6) | Comparación clara con interpretación de cambios y su causa | Comparación adecuada con alguna omisión interpretativa | Comparación presente pero sin profundidad analítica | Comparación mínima o confusa | No realiza comparación | ×3 |
+| **Documentación crítica de IA** (Sección 9) | Documenta prompt, resultado y análisis crítico profundo | Documenta adecuadamente con alguna omisión | Documenta de forma general sin crítica | Documentación mínima | No documenta el uso de IA | ×3 |
+| **Resumen ejecutivo y conclusiones** (Secciones 7–8) | Redacción impecable; conclusiones basadas en datos con recomendaciones accionables | Clara y pertinente con algún área poco desarrollada | Comprensible pero sin profundidad o sin datos concretos | Débil, con conclusiones no relacionadas con los hallazgos | Ausente o completamente desconectada | ×4 |
+| **Reflexiones y decisiones técnicas** | Todas las reflexiones completas, reflexivas y bien argumentadas | Mayoría completas con leve superficialidad | Reflexiones presentes pero generales | Reflexiones mínimas o incompletas | No completa las reflexiones | ×3 |
+| **Calidad del documento renderizado** | HTML/PDF impecable; código ejecuta sin errores; formato consistente | Ejecuta con errores menores; formato mayormente consistente | Algunos chunks con errores; presentación aceptable | Múltiples errores de ejecución; presentación descuidada | No renderiza o es ilegible | ×4 |
+| **Referencias en formato APA 7** | Uso impecable y uniforme de APA 7 | Uso adecuado con errores menores | Uso básico con varios errores | Uso incorrecto o inconsistente | No aplica APA o está ausente | ×2 |
+
+**Puntaje máximo: 100 puntos** *(cada criterio se multiplica por su ponderación y se suma)*
+
+---
+
+<center>
+*92-0026 — Análisis de Datos Avanzado para Negocios | ULACIT | Elaborado con fines académicos*
+</center>

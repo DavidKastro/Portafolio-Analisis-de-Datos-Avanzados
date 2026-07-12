@@ -1,0 +1,439 @@
+---
+title: "Semana 7 · Inferencia Estadística"
+subtitle: "Pruebas de hipótesis: prueba t y ANOVA, paso a paso"
+author: "92-0026 · Análisis de Datos Avanzado para Negocios · ULACIT"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    highlight: tango
+    df_print: paged
+---
+
+# Introducción
+
+En las semanas anteriores describimos y exploramos datos (estadística descriptiva, EDA). Esta semana damos el salto a la **inferencia estadística**: usar una muestra para tomar decisiones sobre una población, mediante **pruebas de hipótesis**.
+
+Este documento trabaja con el dataset `StudentsPerformance.csv`, que contiene los puntajes de matemáticas, lectura y escritura de 1,000 estudiantes, junto con variables demográficas y académicas (género, grupo étnico, nivel educativo de los padres, tipo de almuerzo y si completaron un curso de preparación para el examen).
+
+<div class="caja instruccion">
+**Objetivo de este documento:** aprender el flujo de trabajo completo para una prueba de hipótesis:
+
+1. Plantear la pregunta de negocio/investigación (H₀ y H₁).
+2. **Verificar los supuestos** de la prueba.
+3. Ejecutar la prueba adecuada (paramétrica o no paramétrica).
+4. **Interpretar** los resultados en lenguaje claro.
+
+Este flujo se repite dos veces: una vez para la **prueba t** (dos grupos) y otra para **ANOVA** (tres o más grupos).
+</div>
+
+## Paquetes y datos
+
+```{r librerias}
+# Cargamos las librerías necesarias
+library(tidyverse)  # manipulación y visualización de datos
+library(car)        # para la prueba de Levene (homogeneidad de varianzas)
+```
+
+```{r carga-datos}
+# Cargamos el dataset
+estudiantes <- read_csv("StudentsPerformance (2).csv")
+
+# Renombramos las columnas a nombres cortos y sin espacios (más fáciles de usar en R)
+estudiantes <- estudiantes |>
+  rename(
+    genero            = gender,
+    grupo_etnico       = `race/ethnicity`,
+    nivel_edu_padres   = `parental level of education`,
+    almuerzo           = lunch,
+    curso_preparacion  = `test preparation course`,
+    puntaje_matematicas = `math score`,
+    puntaje_lectura     = `reading score`,
+    puntaje_escritura   = `writing score`
+  )
+
+glimpse(estudiantes)
+```
+
+---
+
+# Parte 1 · Prueba t: comparando dos grupos
+
+## 1.1 Pregunta de negocio/investigación
+
+**Pregunta:** ¿El puntaje de matemáticas difiere entre los estudiantes que **completaron** el curso de preparación para el examen y los que **no lo completaron**?
+
+**Hipótesis:**
+
+- H₀: la media del puntaje de matemáticas es igual en ambos grupos (μ_completado = μ_no_completado).
+- H₁: la media del puntaje de matemáticas es diferente entre ambos grupos.
+
+```{r explorar-ttest}
+estudiantes |>
+  group_by(curso_preparacion) |>
+  summarise(
+    n = n(),
+    media = mean(puntaje_matematicas),
+    desviacion = sd(puntaje_matematicas)
+  )
+```
+
+```{r grafico-ttest, fig.width=6, fig.height=4}
+ggplot(estudiantes, aes(x = curso_preparacion, y = puntaje_matematicas, fill = curso_preparacion)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c("completed" = "#4B2E83", "none" = "#E87722")) +
+  labs(
+    title = "Puntaje de matemáticas según curso de preparación",
+    x = "Curso de preparación",
+    y = "Puntaje de matemáticas"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+<div class="caja reflexion">
+Antes de mirar el gráfico con detalle, formúlate la pregunta: ¿se ven las cajas (medianas y dispersión) muy distintas entre los dos grupos? Eso es solo una primera impresión visual; la prueba estadística nos dirá si la diferencia es significativa.
+</div>
+
+## 1.2 Verificación de supuestos
+
+Antes de confiar en un t-test, debemos verificar tres supuestos:
+
+### a) Normalidad (Shapiro-Wilk)
+
+```{r shapiro-ttest}
+estudiantes |>
+  filter(curso_preparacion == "completed") |>
+  pull(puntaje_matematicas) |>
+  shapiro.test()
+
+estudiantes |>
+  filter(curso_preparacion == "none") |>
+  pull(puntaje_matematicas) |>
+  shapiro.test()
+```
+
+<div class="caja alerta">
+**Cuidado con muestras grandes:** la prueba de Shapiro-Wilk es muy sensible cuando n es grande (cientos o miles de observaciones): puede marcar como "no normal" desviaciones muy pequeñas que en la práctica no afectan al t-test. Con n > 30, el Teorema Central del Límite nos da cierta protección. Por eso, además del valor p, conviene revisar un histograma o un gráfico Q-Q.
+</div>
+
+```{r qqplot-ttest, fig.width=8, fig.height=4}
+ggplot(estudiantes, aes(sample = puntaje_matematicas)) +
+  stat_qq(color = "#4B2E83") +
+  stat_qq_line(color = "#E87722") +
+  facet_wrap(~ curso_preparacion) +
+  labs(title = "Gráfico Q-Q por grupo") +
+  theme_minimal()
+```
+
+### b) Homogeneidad de varianzas (prueba F / Levene)
+
+```{r varianzas-ttest}
+var.test(
+  puntaje_matematicas ~ curso_preparacion,
+  data = estudiantes
+)
+```
+
+### c) Independencia
+
+Cada estudiante pertenece a un solo grupo (completó o no el curso) y las observaciones no están relacionadas entre sí. Este supuesto se cumple por el diseño del estudio, no se verifica con una prueba en R.
+
+<div class="caja decision">
+**Regla de decisión:**
+
+- Si el valor p de Shapiro-Wilk es mayor a 0.05 (o si n es grande y el Q-Q se ve razonablemente recto) → los datos se comportan como normales → usar `t.test()`.
+- Si los datos claramente no son normales y la muestra es pequeña → usar la alternativa no paramétrica `wilcox.test()` (prueba de Mann-Whitney).
+- Si el valor p de `var.test()` es mayor a 0.05 → varianzas homogéneas → usar `t.test(..., var.equal = TRUE)`.
+- Si el valor p de `var.test()` es menor a 0.05 → varianzas distintas → usar `t.test(..., var.equal = FALSE)` (la opción por defecto en R, también llamada corrección de Welch).
+</div>
+
+## 1.3 Ejecución de la prueba
+
+```{r ttest}
+resultado_t <- t.test(
+  puntaje_matematicas ~ curso_preparacion,
+  data = estudiantes,
+  var.equal = TRUE   # según el resultado de var.test() arriba
+)
+
+resultado_t
+```
+
+## 1.4 Interpretación de resultados
+
+```{r interpretacion-ttest, echo=FALSE}
+diferencia <- diff(resultado_t$estimate)
+print(diferencia)
+```
+
+<div class="caja decision">
+**Cómo leer esta salida:**
+
+1. **Valor p:** si es menor a 0.05, rechazamos H₀: hay una diferencia significativa entre los grupos.
+2. **Intervalo de confianza (95%):** rango de valores plausibles para la diferencia real entre las medias. Si el intervalo no incluye el cero, refuerza la conclusión de que hay diferencia.
+3. **Diferencia de medias:** la magnitud del efecto (no solo si es "significativo", sino qué tan grande es en puntos de examen).
+</div>
+
+**Conclusión:** con un valor p muy por debajo de 0.05, rechazamos H₀. Los estudiantes que completaron el curso de preparación obtienen, en promedio, puntajes de matemáticas significativamente más altos que quienes no lo completaron. El intervalo de confianza al 95% nos indica el rango plausible de esa diferencia.
+
+<div class="caja reflexion">
+**Significancia estadística ≠ relevancia práctica.** Una diferencia de pocos puntos puede ser estadísticamente significativa con una muestra grande, pero ¿es relevante para decidir si vale la pena invertir recursos en el curso de preparación? Esa es una pregunta de negocio/educativa, no solo estadística.
+</div>
+
+---
+
+# Parte 2 · ANOVA: comparando tres o más grupos
+
+## 2.1 Pregunta de negocio/investigación
+
+**Pregunta:** ¿El puntaje de lectura difiere según el **grupo étnico** del estudiante (5 categorías: A, B, C, D, E)?
+
+**Hipótesis:**
+
+- H₀: las medias del puntaje de lectura son iguales en los 5 grupos.
+- H₁: al menos un grupo tiene una media diferente.
+
+```{r explorar-anova}
+estudiantes |>
+  group_by(grupo_etnico) |>
+  summarise(
+    n = n(),
+    media = mean(puntaje_lectura),
+    desviacion = sd(puntaje_lectura)
+  )
+```
+
+```{r grafico-anova, fig.width=7, fig.height=4}
+ggplot(estudiantes, aes(x = grupo_etnico, y = puntaje_lectura, fill = grupo_etnico)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c(
+    "group A" = "#4B2E83", "group B" = "#6B4FA0", "group C" = "#E87722",
+    "group D" = "#2E6B3E", "group E" = "#B23A52"
+  )) +
+  labs(
+    title = "Puntaje de lectura según grupo étnico",
+    x = "Grupo étnico",
+    y = "Puntaje de lectura"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## 2.2 Verificación de supuestos
+
+### a) Normalidad de los residuos
+
+Para el ANOVA, el supuesto de normalidad se evalúa sobre los **residuos del modelo**, no sobre los datos crudos de cada grupo.
+
+```{r modelo-anova}
+modelo_anova <- aov(puntaje_lectura ~ grupo_etnico, data = estudiantes)
+
+shapiro.test(residuals(modelo_anova))
+```
+
+```{r qq-anova, fig.width=5, fig.height=4}
+ggplot(data.frame(residuos = residuals(modelo_anova)), aes(sample = residuos)) +
+  stat_qq(color = "#4B2E83") +
+  stat_qq_line(color = "#E87722") +
+  labs(title = "Gráfico Q-Q de los residuos del modelo") +
+  theme_minimal()
+```
+
+### b) Homocedasticidad (prueba de Levene)
+
+```{r levene-anova}
+leveneTest(puntaje_lectura ~ grupo_etnico, data = estudiantes)
+```
+
+### c) Independencia
+
+Cada estudiante pertenece a un único grupo étnico y las observaciones entre estudiantes no dependen unas de otras. Este supuesto se cumple por diseño.
+
+<div class="caja decision">
+**Regla de decisión:**
+
+- Si los residuos se comportan razonablemente normales (Shapiro-Wilk p > 0.05, o Q-Q razonablemente recto) **y** Levene da p > 0.05 (varianzas homogéneas) → usar `aov()` (ANOVA clásico).
+- Si los residuos están claramente lejos de la normalidad y la muestra es pequeña → usar la alternativa no paramétrica `kruskal.test()` (prueba de Kruskal-Wallis).
+- Si Levene da p < 0.05 (varianzas no homogéneas) → considerar `oneway.test(..., var.equal = FALSE)` como alternativa al ANOVA clásico.
+</div>
+
+## 2.3 Ejecución de la prueba
+
+```{r anova}
+summary(modelo_anova)
+```
+
+## 2.4 Comparaciones post-hoc
+
+Si el ANOVA resulta significativo, sabemos que **al menos un grupo** es diferente, pero no cuál. Para saberlo, usamos una prueba post-hoc:
+
+```{r tukey}
+TukeyHSD(modelo_anova)
+```
+
+```{r tukey-plot, fig.width=7, fig.height=5}
+
+# 1. Aumentamos el margen izquierdo (el segundo número es el margen izquierdo)
+# Los valores por defecto suelen ser c(5, 4, 4, 2) + 0.1
+par(mar = c(5, 8, 4, 2)) 
+
+# 2. Volvemos a generar el gráfico indicando que el texto sea horizontal (las = 1)
+plot(TukeyHSD(modelo_anova), las = 1)
+
+# 3. Al terminar, es buena práctica resetear los márgenes por defecto
+par(mar = c(5, 4, 4, 2))
+```
+
+## 2.5 Interpretación de resultados
+
+<div class="caja decision">
+**Cómo leer esta salida:**
+
+1. **Valor p del ANOVA (columna `Pr(>F)`):** si es menor a 0.05, rechazamos H₀: al menos un grupo difiere.
+2. **Estadístico F:** compara la variación *entre* grupos contra la variación *dentro* de los grupos. Valores de F más grandes (junto con un p pequeño) indican una diferencia más clara entre grupos.
+3. **TukeyHSD:** identifica **cuáles pares** de grupos son significativamente diferentes (cuando el intervalo de confianza de la diferencia no incluye el cero, y la columna `p adj` es menor a 0.05).
+</div>
+
+**Conclusión:** el ANOVA resulta significativo (p < 0.05), por lo que rechazamos H₀: existen diferencias en el puntaje de lectura entre al menos dos grupos étnicos. La comparación TukeyHSD nos permite identificar qué pares de grupos específicos presentan esas diferencias.
+
+<div class="caja reflexion">
+¿Qué otras variables (nivel educativo de los padres, tipo de almuerzo, acceso a recursos) podrían estar relacionadas con estas diferencias entre grupos? El ANOVA nos dice *que* hay diferencia, no *por qué* la hay — eso requiere contexto adicional y, en muchos casos, otro tipo de análisis (regresión, control de variables).
+</div>
+
+---
+
+
+# Ejercicios para el estudiante
+
+<div class="caja alerta">
+Para cada ejercicio: (1) plantea H₀ y H₁, (2) verifica los supuestos correspondientes, (3) decide y ejecuta la prueba adecuada (paramétrica o no paramétrica), y (4) escribe una conclusión en una oración, en lenguaje claro y no técnico.
+</div>
+
+<div class="ejercicio">
+#### Ejercicio 1 · Prueba t — Género y escritura
+
+¿Existe una diferencia significativa en el **puntaje de escritura** (`puntaje_escritura`) entre estudiantes de género **femenino** y **masculino**?
+
+```{r ejercicio1, eval=FALSE}
+# 1. Explora las medias y desviaciones por grupo
+
+
+# 2. Verifica normalidad (shapiro.test) y homogeneidad de varianzas (var.test)
+
+
+# 3. Ejecuta la prueba adecuada (t.test o wilcox.test)
+
+
+# 4. Escribe tu conclusión como comentario aquí:
+# Conclusión:
+```
+</div>
+
+<div class="ejercicio">
+#### Ejercicio 2 · Prueba t — Almuerzo y matemáticas
+
+¿El tipo de almuerzo (`almuerzo`: *standard* vs. *free/reduced*) está asociado con diferencias en el **puntaje de matemáticas**?
+
+```{r ejercicio2, eval=FALSE}
+# 1. Explora las medias y desviaciones por grupo
+
+
+# 2. Verifica los supuestos (normalidad y homogeneidad de varianzas)
+
+
+# 3. Ejecuta la prueba adecuada
+
+
+# 4. Escribe tu conclusión como comentario aquí:
+# Conclusión:
+```
+
+<div class="caja reflexion">
+Piensa en el contexto: el tipo de almuerzo (estándar vs. reducido/gratuito) suele relacionarse con el nivel socioeconómico de la familia. Si encuentras una diferencia significativa, ¿qué implicaciones tendría esto para una institución educativa?
+</div>
+</div>
+
+<div class="ejercicio">
+#### Ejercicio 3 · ANOVA — Nivel educativo de los padres y escritura
+
+¿El **nivel educativo de los padres** (`nivel_edu_padres`, 6 categorías) está asociado con diferencias en el **puntaje de escritura**?
+
+```{r ejercicio3, eval=FALSE}
+# 1. Explora las medias por grupo y construye un boxplot
+
+
+# 2. Ajusta el modelo con aov() y verifica los supuestos
+#    (normalidad de los residuos y homogeneidad de varianzas con Levene)
+
+
+# 3. Ejecuta la prueba adecuada (aov o kruskal.test)
+
+
+# 4. Si el resultado es significativo, ejecuta TukeyHSD()
+#    e identifica qué pares de grupos difieren
+
+
+# 5. Escribe tu conclusión como comentario aquí:
+# Conclusión:
+```
+</div>
+
+<div class="ejercicio">
+#### Ejercicio 4 · ANOVA — Grupo étnico y matemáticas
+
+¿El **puntaje de matemáticas** difiere según el **grupo étnico** del estudiante?
+
+```{r ejercicio4, eval=FALSE}
+# 1. Explora las medias por grupo y construye un boxplot
+
+
+# 2. Ajusta el modelo con aov() y verifica los supuestos
+
+
+# 3. Ejecuta la prueba adecuada
+
+
+# 4. Si aplica, ejecuta la comparación post-hoc
+
+
+# 5. Escribe tu conclusión como comentario aquí:
+# Conclusión:
+```
+</div>
+
+<div class="ejercicio">
+#### Ejercicio 5 · Interpretación crítica con IA
+
+Toma los resultados de **uno** de los ejercicios anteriores (1 al 4) y realiza lo siguiente:
+
+1. Redacta un prompt para un LLM (Claude o ChatGPT) que incluya el estadístico de prueba, el valor p, el intervalo de confianza (o el resultado de TukeyHSD, si aplica) y las medias de los grupos, pidiendo una interpretación en lenguaje simple para una audiencia no técnica (por ejemplo, una dirección académica).
+2. Copia la respuesta del LLM.
+3. Evalúa críticamente la respuesta: ¿fue precisa? ¿simplificó de más? ¿confundió significancia estadística con importancia práctica? ¿mencionó los supuestos que verificaste?
+4. Documenta el prompt, la respuesta y tu evaluación crítica en tu Portafolio Digital.
+
+```{r ejercicio5, eval=FALSE}
+# Prompt utilizado (escríbelo aquí como comentario):
+#
+#
+# Respuesta del LLM (resume aquí como comentario):
+#
+#
+# Evaluación crítica (escribe aquí tu análisis):
+#
+```
+</div>
+
+---
+
+<div class="caja instruccion">
+**Antes de entregar, recuerda:**
+
+- Verificar siempre los supuestos *antes* de interpretar el resultado de cualquier prueba.
+- Justificar la elección entre prueba paramétrica y no paramétrica.
+- Distinguir significancia estadística de relevancia práctica en tus conclusiones.
+- Documentar tu interacción con la IA en el Portafolio Digital.
+</div>

@@ -1,0 +1,281 @@
+---
+title: "s3_Limpieza Datos"
+author: "Andrew Bocker"
+date: "2026-05-29"
+output: html_document
+---
+
+# Librerias 
+
+```{r}
+
+#install.packages('tidyverse')
+#install.packages('naniar')
+
+library(tidyverse)
+library(naniar)
+
+```
+
+# 1. Cargar el dataset
+
+```{r}
+
+df <- read_csv('dirty_cafe_sales (2).csv')
+
+# Ver estructura del dataset
+
+glimpse(df)
+
+# Dimensiones dataset
+
+dim(df)
+
+# Nombres de las columnas
+
+names(df)
+
+# Ver primeras entradas de la base
+
+head(df)
+
+```
+
+# 1.2 Analisis de problemas
+
+```{r}
+
+# Contar NAs por columna (los campos vacíos ya son NA al leer con read_csv)
+colSums(is.na(df))
+
+# Pero también hay texto 'ERROR' y 'UNKNOWN' — debemos contarlos
+df |> summarise(across(everything(), ~sum(. %in% c("ERROR", "UNKNOWN"), na.rm=T)))
+
+# Visualizar patrón de faltantes
+vis_miss(df)
+
+# Resumen estadístico
+summary(df)
+
+
+```
+# Verificar total spent
+
+```{r}
+# Verificar consistencia de cálculo
+df |>
+  mutate(
+    qty_num   = suppressWarnings(as.numeric(Quantity)),
+    price_num = suppressWarnings(as.numeric(`Price Per Unit`)),
+    total_num = suppressWarnings(as.numeric(`Total Spent`)),
+    calc_ok   = abs(total_num - qty_num * price_num) < 0.01
+  ) |>
+  filter(!is.na(calc_ok)) |>
+  count(calc_ok)
+
+```
+# Pipeline de Limpieza LLM
+
+## 2. Paso 1 – Convertir ERROR y UNKNOWN a NA
+
+```{r convertir_na}
+# Decisión: los valores "ERROR" y "UNKNOWN" representan datos faltantes
+# con etiquetas explícitas. Se reemplazan por NA usando na_if() para que
+# R los trate correctamente en pasos posteriores (imputación, conversión numérica).
+# Se aplica a todas las columnas de tipo character de forma vectorizada con across().
+
+df_limpio <- df |>
+  mutate(
+    across(where(is.character), ~ na_if(.x, "ERROR")),
+    across(where(is.character), ~ na_if(.x, "UNKNOWN"))
+  )
+
+cat("NAs por columna después del Paso 1:\n")
+colSums(is.na(df_limpio))
+```
+
+---
+
+## 3. Paso 2 – Convertir columnas a tipos correctos
+
+```{r conversion_tipos}
+# Decisión: todas las columnas llegaron como character (<chr>) por la presencia
+# de valores textuales ("ERROR", "UNKNOWN"). Ahora que esos valores son NA,
+# es seguro convertir las columnas numéricas con as.numeric() y la fecha
+# con as.Date(). Las columnas categóricas permanecen como character (o factor).
+
+df_limpio <- df_limpio |>
+  mutate(
+    Quantity        = as.numeric(Quantity),
+    `Price Per Unit` = as.numeric(`Price Per Unit`),
+    `Total Spent`   = as.numeric(`Total Spent`),
+    `Transaction Date` = as.Date(`Transaction Date`)
+  )
+
+cat("Tipos de variable después del Paso 2:\n")
+glimpse(df_limpio)
+```
+
+---
+
+## 4. Paso 3 – Imputar NAs numéricos con la mediana
+
+```{r imputar_numericos}
+# Decisión estadística: se usa la mediana en lugar de la media porque es robusta
+# ante valores atípicos (outliers), algo común en datos de transacciones donde
+# una compra muy grande puede sesgar la media. La mediana preserva mejor la
+# tendencia central real de la distribución.
+# Se aplica con across() + replace_na() sobre las columnas numéricas.
+
+# Función auxiliar: calcula la mediana ignorando NAs
+mediana_na <- function(x) median(x, na.rm = TRUE)
+
+df_limpio <- df_limpio |>
+  mutate(
+    across(
+      c(Quantity, `Price Per Unit`, `Total Spent`),
+      ~ replace_na(.x, mediana_na(.x))
+    )
+  )
+
+cat("NAs en columnas numéricas después del Paso 3:\n")
+df_limpio |>
+  select(Quantity, `Price Per Unit`, `Total Spent`) |>
+  summarise(across(everything(), ~ sum(is.na(.x))))
+```
+
+---
+
+## 5. Paso 4 – Imputar NAs categóricos con la moda
+
+```{r imputar_categoricos}
+# Decisión estadística: para variables categóricas no existe una función nativa
+# de moda en R. Se define una función auxiliar que calcula el valor más frecuente
+# (excluyendo NAs). La moda es el estadístico de tendencia central adecuado para
+# variables nominales como el método de pago o la ubicación.
+
+# Función auxiliar: calcula la moda de un vector de caracteres
+moda <- function(x) {
+  x |>
+    na.omit() |>
+    table() |>
+    which.max() |>
+    names()
+}
+
+# Las columnas categóricas a imputar son: Item, Payment Method, Location
+df_limpio <- df_limpio|>
+  mutate(
+    across(
+      c(Item, `Payment Method`, Location),
+      ~ replace_na(.x, moda(.x))
+    )
+  )
+
+cat("NAs en columnas categóricas después del Paso 4:\n")
+df_limpio |>
+  select(Item, `Payment Method`, Location) |>
+  summarise(across(everything(), ~ sum(is.na(.x))))
+```
+
+---
+
+## 6. Paso 5 – Imputar NAs de Transaction Date con la mediana
+
+```{r imputar_fecha}
+# Decisión estadística: para fechas, la mediana es preferible a la moda porque
+# preserva el orden temporal y es más representativa de la distribución de fechas
+# en el período de análisis. as.numeric() convierte las fechas a enteros internos
+# (días desde 1970-01-01) para calcular la mediana, y as.Date() las reconvierte.
+
+mediana_fecha <- as.Date(
+  median(as.numeric(df_limpio$`Transaction Date`), na.rm = TRUE),
+  origin = "1970-01-01"
+)
+
+df_limpio <- df_limpio|>
+  mutate(
+    `Transaction Date` = replace_na(`Transaction Date`, mediana_fecha)
+  )
+
+cat("Fecha mediana usada para imputación:", format(mediana_fecha), "\n")
+cat("NAs en Transaction Date:", sum(is.na(df_limpio$`Transaction Date`)), "\n")
+```
+
+---
+
+## 7. Paso 6 – Recalcular Total Spent donde sea NA
+
+```{r recalcular_total}
+# Nota: después de la imputación del Paso 3, Total Spent ya no tiene NAs
+# porque fueron reemplazados por la mediana. Sin embargo, los valores originales
+# de "ERROR" se imputaron con la mediana y NO con el cálculo real.
+# Este paso CORRIGE esas filas: identifica las que tenían ERROR originalmente
+# (usando el dataset sin imputar) y recalcula Total Spent = Quantity × Price Per Unit.
+
+# Identificar las filas que originalmente tenían ERROR en Total Spent
+filas_error <- df_na$`Total Spent` |> is.na()
+
+df_limpio <- df_limpio |>
+  mutate(
+    `Total Spent` = if_else(
+      filas_error,                          # condición: fila con ERROR original
+      Quantity * `Price Per Unit`,          # recalcular desde componentes
+      `Total Spent`                         # mantener el valor imputado/original
+    )
+  )
+
+cat("Filas recalculadas (originalmente ERROR):", sum(filas_error), "\n")
+```
+
+---
+
+## 8. Verificación final
+
+```{r verificacion_final}
+# Resumen final: número de filas y NAs restantes por columna
+cat("==============================\n")
+cat("VERIFICACIÓN FINAL DEL DATASET\n")
+cat("==============================\n\n")
+
+cat("Número total de filas:", nrow(df_limpio), "\n\n")
+
+cat("NAs por columna:\n")
+na_resumen <- df_limpio |>
+  summarise(across(everything(), ~ sum(is.na(.x)))) |>
+  pivot_longer(everything(), names_to = "Columna", values_to = "NAs")
+
+print(na_resumen)
+
+cat("\nTipos de variable finales:\n")
+glimpse(df_limpio)
+```
+
+---
+
+## 9. Resumen del pipeline
+
+```{r resumen_pipeline, echo=FALSE}
+tibble(
+  Paso = 1:6,
+  Descripción = c(
+    "Convertir ERROR y UNKNOWN a NA con na_if()",
+    "Convertir columnas a tipos correctos (numeric, Date)",
+    "Imputar NAs numéricos con la mediana de cada columna",
+    "Imputar NAs categóricos con la moda de cada columna",
+    "Imputar NAs de Transaction Date con la mediana de fechas",
+    "Recalcular Total Spent = Quantity × Price Per Unit donde había ERROR"
+  ),
+  `Decisión estadística` = c(
+    "Tratamiento de valores centinela como missing",
+    "Inferencia de tipo segura post-limpieza",
+    "Mediana: robusta ante outliers en datos transaccionales",
+    "Moda: único estadístico de tendencia central para variables nominales",
+    "Mediana temporal: preserva el orden y distribución del período",
+    "Regla de negocio: Total = Qty × Precio unitario"
+  )
+) |>
+  knitr::kable(caption = "Resumen del pipeline de limpieza")
+```
+
+

@@ -1,0 +1,80 @@
+---
+title: "s3_Limpieza Datos"
+author: "David Castro"
+date: "2026-05-29"
+output: html_document
+---
+
+#Librerias
+
+```{r}
+
+#install.packages('tidyverse')
+#install.packages('naniar')
+
+ library(tidyverse)
+ library(naniar)
+```
+
+#Cargar el dataset
+
+```{r}
+
+df <- read_csv('dirty_cafe_sales (2).csv')
+
+#Ver estructura del dataset
+
+glimpse(df)
+
+#Dimensiones dataset
+
+dim(df)
+
+#Nombres de las columnas 
+
+names(df)
+
+# Ver primeras entradas de la base
+
+head(df)
+
+```
+
+
+#1.2 Analisis de problemas
+
+```{r}
+
+# Contar NAs por columna (los campos vacíos ya son NA al leer con read_csv)
+colSums(is.na(df))
+
+# Pero también hay texto 'ERROR' y 'UNKNOWN' — debemos contarlos
+df |> summarise(across(everything(), ~sum(. %in% c("ERROR", "UNKNOWN"), na.rm=T)))
+
+# Visualizar patrón de faltantes
+vis_miss(df)
+
+# Resumen estadístico
+summary(df)
+
+
+```
+
+#Verificacion total
+
+```{r}
+# Verificar consistencia de cálculo
+df |>
+  mutate(
+    qty_num   = suppressWarnings(as.numeric(Quantity)),
+    price_num = suppressWarnings(as.numeric(`Price Per Unit`)),
+    total_num = suppressWarnings(as.numeric(`Total Spent`)),
+    calc_ok   = abs(total_num - qty_num * price_num) < 0.01
+  ) |>
+  filter(!is.na(calc_ok)) |>
+  count(calc_ok)
+
+```
+
+
+

@@ -1,0 +1,343 @@
+---
+title: "Semana 8 – Análisis Bivariado de Datos Cardiovasculares"
+subtitle: "92-0026 Análisis de Datos Avanzado para Negocios"
+author: "David Castro Gonzalez"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    number_sections: false
+    df_print: paged
+---
+
+
+---
+
+## Introducción
+
+El análisis bivariado es una técnica fundamental en la exploración de datos que permite estudiar la relación entre dos variables simultáneamente. A diferencia del análisis univariado (que describe una sola variable), el análisis bivariado busca identificar **patrones, asociaciones y posibles relaciones** entre pares de variables.
+
+En esta actividad explorarás datos clínicos de pacientes cardiovasculares usando herramientas del ecosistema `tidyverse`. Aplicarás medidas estadísticas como la **covarianza** y la **correlación**, y construirás visualizaciones para comunicar tus hallazgos.
+
+<div class="alerta">
+**⚠️ Nota importante:** Recuerda cargar los paquetes necesarios al inicio de tu documento. Para esta actividad necesitarás al menos `tidyverse`. Si usas paquetes adicionales, agrégalos en el primer chunk.
+</div>
+
+---
+
+## Carga de paquetes y datos
+
+<div class="instruccion">
+** Instrucción:** Carga los paquetes necesarios y lee el archivo `heart.csv`. Asegúrate de que el archivo esté en el mismo directorio que este documento `.Rmd`.
+</div>
+
+```{r setup, message=FALSE, warning=FALSE}
+# Carga aquí los paquetes que vas a utilizar
+# Ejemplo: library(tidyverse)
+
+
+```
+
+```{r carga-datos}
+# Lee el archivo heart.csv y guárdalo en un objeto llamado heart
+
+
+```
+```{r setup, message=FALSE, warning=FALSE}
+# Cargar paquetes
+library(tidyverse)
+
+# Leer la base de datos
+heart <- read_csv("heart.csv")
+
+# Ver las primeras filas
+head(heart)
+```
+
+---
+
+## Parte 1 – Exploración inicial del dataset
+
+<div class="instruccion">
+** Instrucción:** Antes de analizar relaciones entre variables, es necesario entender la estructura general del dataset. Utiliza las funciones que ya conoces para inspeccionar el número de filas, columnas y el tipo de cada variable.
+</div>
+
+```{r exploracion-estructura}
+# Explora la estructura del dataset: dimensiones y tipos de variables
+
+# Dimensiones del dataset
+dim(heart)
+
+# Número de filas
+nrow(heart)
+
+# Número de columnas
+ncol(heart)
+
+# Estructura y tipo de variables
+str(heart)
+
+# Opcional: nombres de las variables
+names(heart)
+```
+
+
+```
+
+<div class="ejercicio">
+** Ejercicio 1.1:** Calcula las siguientes estadísticas descriptivas básicas usando `summarise()` o funciones equivalentes:
+
+- Promedio de edad de los pacientes (`age`)
+- Valor mínimo y máximo del colesterol (`chol`)
+- Valor mínimo y máximo de la frecuencia cardíaca máxima (`thalach`)
+</div>
+
+```{r estadisticas-basicas}
+# Calcula las estadísticas descriptivas solicitadas
+heart %>%
+  summarise(
+    promedio_edad = mean(age, na.rm = TRUE),
+    colesterol_min = min(chol, na.rm = TRUE),
+    colesterol_max = max(chol, na.rm = TRUE),
+    frecuencia_min = min(thalach, na.rm = TRUE),
+    frecuencia_max = max(thalach, na.rm = TRUE)
+  )
+```
+
+**Responde aquí (texto libre):**
+
+> *¿Qué observas sobre la distribución de la edad y el colesterol en esta muestra de pacientes? ¿Hay algo que llame tu atención?*
+>
+> *La edad promedio de los pacientes es de 54.4 años lo cual indica que la muestra esta compuesta principalmente por adultos de mediana edad. En el tema del colesterol los varias segun entre los 126 mg/dL y el 564 mg/dL, lo que evidencia una amplia variabilifdad estre los pacientes el que esta muy elevado podria deberse a un caso muy extremo a un paciente severo. Asimismo la frecuencia maxima presenta un rango que va desde los 71 a los 202 latidos por minuto.*
+
+---
+
+## Parte 2 – Selección de variables numéricas
+
+<div class="instruccion">
+** Instrucción:** El análisis de covarianza y correlación se aplica únicamente sobre variables numéricas. Algunas columnas de este dataset, aunque están codificadas como números, representan categorías (por ejemplo, `sex`, `cp`, `target`). Para esta actividad trabajarás con las siguientes variables continuas: `age`, `trestbps`, `chol`, `thalach` y `oldpeak`.
+
+Crea un nuevo objeto llamado `heart_num` que contenga solo estas cinco columnas.
+</div>
+
+# Selecciona las variables numéricas continuas y guárdalas en heart_num
+```{r seleccion-numericas}
+# Seleccionar únicamente las variables numéricas continuas
+heart_num <- heart %>%
+  select(age, trestbps, chol, thalach, oldpeak)
+
+# Visualizar las primeras filas
+head(heart_num)
+```
+
+<div class="reflexion">
+** Reflexión:** ¿Por qué es importante separar variables numéricas continuas de variables categóricas codificadas como números antes de calcular correlaciones? ¿Qué problema podría surgir si incluyeras `target` (0 = sin enfermedad, 1 = con enfermedad) en la matriz de correlación sin pensar en su naturaleza?
+
+*Escribe tu reflexión aquí...*
+</div>
+
+---
+
+## Parte 3 – Análisis de covarianza
+
+La **covarianza** mide en qué dirección varían conjuntamente dos variables. Sin embargo, su valor depende de las unidades de medida de cada variable, lo que dificulta comparar covarianzas entre distintos pares de variables.
+
+| Signo de la covarianza | Interpretación |
+|---|---|
+| **Positiva** | Ambas variables tienden a aumentar o disminuir juntas |
+| **Negativa** | Cuando una aumenta, la otra tiende a disminuir |
+| **Cercana a cero** | No se observa una relación lineal clara |
+
+<div class="instruccion">
+** Instrucción:** Calcula la matriz de covarianza para el objeto `heart_num` utilizando la función `cov()`. Imprime el resultado.
+</div>
+
+```{r matriz-covarianza}
+# Calcula e imprime la matriz de covarianza
+
+
+```
+
+<div class="ejercicio">
+** Ejercicio 3.1:** Observa la matriz de covarianza e identifica:
+
+1. ¿Qué par de variables presenta la covarianza **más alta** (en valor absoluto)?
+2. ¿Qué par de variables presenta la covarianza **más cercana a cero**?
+3. ¿Qué limitación tiene la covarianza para comparar estas relaciones?
+</div>
+
+**Responde aquí:**
+
+> 1. *...*
+> 2. *...*
+> 3. *...*
+
+---
+
+## Parte 4 – Análisis de correlación
+
+La **correlación de Pearson** es una versión estandarizada de la covarianza. Toma valores entre -1 y 1, lo que permite comparar la fuerza de la relación entre distintos pares de variables sin importar sus unidades de medida.
+
+<div class="instruccion">
+** Instrucción:** Calcula la matriz de correlación para `heart_num` utilizando la función `cor()`. Imprime el resultado redondeando a 2 decimales con `round()`.
+</div>
+
+```{r matriz-correlacion}
+# Calcula e imprime la matriz de correlación (redondeada a 2 decimales)
+
+
+```
+
+<div class="ejercicio">
+** Ejercicio 4.1:** Ahora agrega la variable `target` al análisis para observar su relación con las demás variables. Crea un objeto `heart_cor` que incluya `age`, `trestbps`, `chol`, `thalach`, `oldpeak` y `target`, y calcula su matriz de correlación.
+</div>
+
+```{r correlacion-con-target}
+# Calcula la correlación incluyendo la variable target
+
+
+```
+
+**Responde aquí:**
+
+> *¿Qué variable muestra la correlación más fuerte con `target`? ¿La relación es positiva o negativa? ¿Tiene sentido clínicamente?*
+>
+> *Escribe tu interpretación aquí...*
+
+---
+
+## Parte 5 – Visualización de la matriz de correlación
+
+Una tabla de números es difícil de leer. Un **mapa de calor de correlaciones** (heatmap) permite identificar patrones visualmente con mayor facilidad.
+
+<div class="instruccion">
+** Instrucción:** Sigue estos pasos para construir el mapa de calor:
+
+1. Usa el prompt de IA que aparece más abajo para generar el código.
+2. Pega el código en el chunk vacío.
+3. Ejecuta el chunk y verifica que el gráfico se produce correctamente.
+4. Interpreta el resultado respondiendo las preguntas al final de esta sección.
+</div>
+
+<div class="ejercicio">
+** Prompt sugerido para el LLM:**
+
+```
+Tengo en R un dataframe llamado heart_cor que contiene las columnas: 
+age, trestbps, chol, thalach, oldpeak y target. 
+Quiero construir un mapa de calor (heatmap) de la matriz de correlación 
+usando ggplot2 y tidyverse. 
+El gráfico debe:
+- Mostrar los valores de correlación dentro de cada celda redondeados a 2 decimales.
+- Usar una escala de color divergente (azul para correlaciones negativas, 
+  rojo para positivas, blanco en cero).
+- Tener etiquetas en español para los ejes y el título.
+- Usar theme_minimal().
+Solo muéstrame el código en R, sin explicaciones adicionales.
+```
+</div>
+
+```{r heatmap-correlacion}
+# Pega aquí el código generado por el LLM para el mapa de calor
+
+
+```
+
+<div class="reflexion">
+**💭 Reflexión – Evaluación crítica del código generado por IA:**
+
+Después de ejecutar el código, responde:
+
+1. ¿El código generado funcionó directamente o necesitaste modificarlo? ¿Qué cambios hiciste?
+2. ¿El gráfico resultante es fácil de interpretar? ¿Qué mejorarías?
+3. ¿Qué variables presentan la correlación más fuerte entre sí?
+4. ¿Existen grupos de variables que parecen estar relacionadas?
+5. ¿Qué variables se asocian más con la presencia de enfermedad cardíaca (`target`)?
+
+*Escribe tus respuestas aquí...*
+</div>
+
+---
+
+## Parte 6 – Visualización de relaciones entre variables
+
+La matriz de correlación nos da una visión general, pero los **diagramas de dispersión** (scatter plots) permiten ver la forma exacta de la relación entre dos variables y detectar valores atípicos.
+
+### 6.1 Edad y colesterol
+
+<div class="instruccion">
+** Instrucción:** Construye un diagrama de dispersión entre `age` (eje X) y `chol` (eje Y). Agrega una línea de tendencia suavizada con `geom_smooth(method = "lm")` para visualizar la dirección general de la relación.
+</div>
+
+```{r scatter-age-chol}
+# Diagrama de dispersión: edad vs. colesterol
+
+
+```
+
+**Interpreta aquí:**
+
+> *¿Existe alguna tendencia entre la edad y el nivel de colesterol? ¿La relación es fuerte o débil según el gráfico?*
+>
+> *Escribe tu interpretación aquí...*
+
+---
+
+### 6.2 Edad y frecuencia cardíaca máxima
+
+<div class="instruccion">
+** Instrucción:** Construye un diagrama de dispersión entre `age` (eje X) y `thalach` –frecuencia cardíaca máxima alcanzada– (eje Y). Agrega también una línea de tendencia.
+</div>
+
+```{r scatter-age-thalach}
+# Diagrama de dispersión: edad vs. frecuencia cardíaca máxima
+
+
+```
+
+**Interpreta aquí:**
+
+> *¿Qué relación observas entre la edad y la frecuencia cardíaca máxima? ¿Es coherente con lo que mostraba la matriz de correlación?*
+>
+> *Escribe tu interpretación aquí...*
+
+---
+
+### 6.3 Colesterol y presencia de enfermedad cardíaca
+
+<div class="instruccion">
+** Instrucción:** Para comparar el colesterol entre pacientes con y sin enfermedad cardíaca, construye un **diagrama de caja** (boxplot) donde el eje X sea `target` (convertido a factor con `as.factor()`) y el eje Y sea `chol`. Usa colores diferentes para cada grupo.
+</div>
+
+```{r boxplot-chol-target}
+# Boxplot: colesterol según presencia de enfermedad cardíaca
+
+
+```
+
+<div class="decision">
+**🔍 Decisión analítica:** Con base en el boxplot anterior, ¿el nivel de colesterol parece ser un buen indicador para distinguir entre pacientes con y sin enfermedad cardíaca? Justifica tu respuesta considerando la forma de las cajas, la mediana y la presencia de valores atípicos.
+
+*Escribe tu decisión aquí...*
+</div>
+
+---
+
+
+## Reflexión final
+
+<div class="reflexion">
+**💭 Reflexión integradora:** Responde en al menos un párrafo las siguientes preguntas:
+
+- ¿Cuál fue el hallazgo más interesante que encontraste en este análisis bivariado?
+- ¿Qué limitaciones tiene el análisis de correlación para entender relaciones en datos de salud?
+- ¿Cómo podría este tipo de análisis ser útil como paso previo a construir un modelo predictivo de enfermedad cardíaca?
+
+*Escribe tu reflexión aquí...*
+</div>
+
+---
+
+*Documento generado con R Markdown — Curso 92-0026 | ULACIT*

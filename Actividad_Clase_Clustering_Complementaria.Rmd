@@ -1,0 +1,309 @@
+---
+title: "Actividad de Clase: Clustering Complementario"
+subtitle: "Comparación de segmentaciones con distintas combinaciones de variables"
+author: "Estudiante"
+output:
+  html_document:
+    theme: readable
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Introducción
+
+En esta actividad complementamos el análisis de segmentación realizado previamente
+(Annual Income + Spending Score) aplicando K-means a dos nuevas combinaciones de
+variables:
+
+1. **Age + Spending Score**
+2. **Age + Annual Income**
+
+El objetivo es comparar cómo cambia la segmentación de clientes según las variables
+seleccionadas y qué tipo de información aporta cada combinación.
+
+---
+
+# 0. Librerías y datos
+
+```{r librerias}
+library(tidyverse)
+library(cluster)
+library(factoextra)
+library(readr)
+```
+
+```{r carga}
+# Reutilizamos la base ya limpiada en la actividad anterior.
+# Si estás corriendo este chunk de forma independiente, vuelve a cargar y limpiar
+# la base antes de continuar.
+
+df_raw <- read_csv("Mall_Customers.csv")
+
+df <- df_raw %>%
+  rename(
+    CustomerID    = `CustomerID`,
+    Genre         = `Gender`,
+    Age           = `Age`,
+    AnnualIncome  = `Annual Income (k$)`,
+    SpendingScore = `Spending Score (1-100)`
+  ) %>%
+  distinct() %>%
+  mutate(
+    CustomerID    = as.integer(CustomerID),
+    Genre         = as.factor(Genre),
+    Age           = as.integer(Age),
+    AnnualIncome  = as.numeric(AnnualIncome),
+    SpendingScore = as.numeric(SpendingScore)
+  ) %>%
+  filter(
+    Age > 0,
+    AnnualIncome > 0,
+    SpendingScore >= 0 & SpendingScore <= 100
+  )
+
+head(df)
+```
+
+---
+
+# Combinación 1 — Age + Spending Score
+
+## 1.1 Selección de variables y estandarización
+
+```{r seleccion-age-spending}
+data_clust_1 <- df %>%
+  select(Age, SpendingScore)
+
+data_scaled_1 <- scale(data_clust_1)
+
+head(data_scaled_1)
+```
+
+## 1.2 Número óptimo de clusters
+
+### Método del Codo
+
+```{r codo-age-spending}
+fviz_nbclust(
+  x = data_scaled_1,
+  FUN = kmeans,
+  method = "wss"
+) +
+  labs(title = "Método del Codo — Age vs. Spending Score",
+       x = "Número de clusters (k)",
+       y = "Suma de cuadrados intra-cluster (WSS)")
+```
+
+### Gap Statistic
+
+```{r gap-age-spending}
+set.seed(123)
+
+fviz_nbclust(
+  x = data_scaled_1,
+  FUN = kmeans,
+  method = "gap_stat"
+) +
+  labs(title = "Gap Statistic — Age vs. Spending Score",
+       x = "Número de clusters (k)",
+       y = "Gap statistic")
+```
+
+## 1.3 Aplicar K-means
+
+```{r kmeans-age-spending}
+set.seed(123)
+
+k1 <- 4  # Ajusta este valor según lo que muestren tus gráficas de codo/gap statistic
+
+kmeans_model_1 <- kmeans(
+  x       = data_scaled_1,
+  centers = k1,
+  nstart  = 25
+)
+
+df <- df %>%
+  mutate(Cluster_AgeSpending = as.factor(kmeans_model_1$cluster))
+
+head(df)
+```
+
+## 1.4 Visualización
+
+```{r viz-age-spending}
+fviz_cluster(
+  object   = kmeans_model_1,
+  data     = data_scaled_1,
+  geom     = "point",
+  ellipse  = TRUE,
+  palette  = "Set2",
+  ggtheme  = theme_minimal()
+) +
+  labs(title = "Clusters: Age vs. Spending Score",
+       x = "Edad (estandarizada)",
+       y = "Spending Score (estandarizado)")
+```
+
+## 1.5 Análisis e interpretación — Age + Spending Score
+
+> **1. ¿Cuántos clusters seleccionaste y por qué?**
+> El número de clusters se eligió observando el punto de inflexión ("codo") en el
+> gráfico WSS y contrastándolo con el valor de k que maximiza el gap statistic.
+> Ajusta `k1` en el código de arriba al valor que efectivamente observes en tus
+> gráficas antes de redactar la justificación final.
+
+> **2. Describe cada cluster observado**
+> Al segmentar por edad y spending score suele emerger un patrón claro:
+>
+> - **Jóvenes con spending score alto:** clientes jóvenes muy propensos al consumo
+>   impulsivo, atractivos para campañas de moda, tecnología o entretenimiento.
+> - **Jóvenes con spending score bajo:** clientes jóvenes con bajo gasto, posible
+>   segmento con bajo poder adquisitivo o poco interesado en la oferta actual.
+> - **Adultos/mayores con spending score alto:** clientes de mayor edad con alto
+>   consumo, valiosos para productos premium o de mayor ticket.
+> - **Adultos/mayores con spending score bajo:** clientes de mayor edad con bajo
+>   consumo, segmento más conservador en sus hábitos de compra.
+>
+> A diferencia de la segmentación por ingreso, aquí la variable "edad" introduce
+> un componente generacional: el spending score parece estar más asociado a la
+> etapa de vida que al ingreso disponible.
+
+> **3. ¿Qué implicaciones tiene esta segmentación para el negocio?**
+> Permite diseñar campañas de marketing diferenciadas por generación: contenido y
+> canales distintos para jóvenes de alto consumo (redes sociales, influencers,
+> moda/tecnología) versus adultos mayores de alto consumo (marketing más
+> tradicional, productos de calidad/durabilidad). También ayuda a decidir en qué
+> franjas etarias invertir esfuerzos de activación cuando el spending score es bajo.
+
+---
+
+# Combinación 2 — Age + Annual Income
+
+## 2.1 Selección de variables y estandarización
+
+```{r seleccion-age-income}
+data_clust_2 <- df %>%
+  select(Age, AnnualIncome)
+
+data_scaled_2 <- scale(data_clust_2)
+
+head(data_scaled_2)
+```
+
+## 2.2 Número óptimo de clusters
+
+### Método del Codo
+
+```{r codo-age-income}
+fviz_nbclust(
+  x = data_scaled_2,
+  FUN = kmeans,
+  method = "wss"
+) +
+  labs(title = "Método del Codo — Age vs. Annual Income",
+       x = "Número de clusters (k)",
+       y = "Suma de cuadrados intra-cluster (WSS)")
+```
+
+### Gap Statistic
+
+```{r gap-age-income}
+set.seed(123)
+
+fviz_nbclust(
+  x = data_scaled_2,
+  FUN = kmeans,
+  method = "gap_stat"
+) +
+  labs(title = "Gap Statistic — Age vs. Annual Income",
+       x = "Número de clusters (k)",
+       y = "Gap statistic")
+```
+
+## 2.3 Aplicar K-means
+
+```{r kmeans-age-income}
+set.seed(123)
+
+k2 <- 3  # Ajusta este valor según lo que muestren tus gráficas de codo/gap statistic
+
+kmeans_model_2 <- kmeans(
+  x       = data_scaled_2,
+  centers = k2,
+  nstart  = 25
+)
+
+df <- df %>%
+  mutate(Cluster_AgeIncome = as.factor(kmeans_model_2$cluster))
+
+head(df)
+```
+
+## 2.4 Visualización
+
+```{r viz-age-income}
+fviz_cluster(
+  object   = kmeans_model_2,
+  data     = data_scaled_2,
+  geom     = "point",
+  ellipse  = TRUE,
+  palette  = "Set2",
+  ggtheme  = theme_minimal()
+) +
+  labs(title = "Clusters: Age vs. Annual Income",
+       x = "Edad (estandarizada)",
+       y = "Annual Income (estandarizado)")
+```
+
+## 2.5 Análisis e interpretación — Age + Annual Income
+
+> **1. ¿Cuántos clusters seleccionaste y por qué?**
+> Igual que en la combinación anterior, el valor de `k2` debe fijarse según el
+> punto donde el WSS deja de disminuir de forma significativa (codo) y donde el
+> gap statistic alcanza su máximo o se estabiliza.
+
+> **2. Describe cada cluster observado**
+> Con edad e ingreso anual, el patrón típico que emerge es:
+>
+> - **Jóvenes de ingreso bajo/medio:** trabajadores en etapas iniciales de su
+>   carrera, con ingresos aún en crecimiento.
+> - **Adultos de mediana edad con ingreso alto:** clientes en la etapa de mayor
+>   poder adquisitivo de su vida laboral, coincidente con el pico típico de
+>   ingresos en la mediana edad.
+> - **Adultos mayores con ingreso más variable:** algunos con ingresos altos
+>   (carreras consolidadas) y otros con ingresos menores (jubilación o reducción
+>   de actividad laboral).
+>
+> Esta combinación refleja principalmente el ciclo de vida económico del cliente,
+> a diferencia de la combinación anterior (Age + Spending Score), que refleja más
+> bien el comportamiento de consumo independientemente del poder adquisitivo.
+
+> **3. ¿Qué implicaciones tiene esta segmentación para el negocio?**
+> Es útil para decisiones de **pricing** y **portafolio de productos**: identificar
+> en qué rango etario se concentra el mayor poder adquisitivo permite ajustar la
+> oferta premium a esa franja, mientras que se pueden diseñar líneas más accesibles
+> para segmentos jóvenes o de ingreso más bajo. También sirve para planear
+> estrategias de fidelización a largo plazo, anticipando que el ingreso de un
+> cliente joven probablemente crecerá con el tiempo.
+
+---
+
+# Comparación entre las tres segmentaciones
+
+| Combinación de variables | Qué captura | Uso principal para el negocio |
+|---|---|---|
+| Annual Income + Spending Score (actividad original) | Poder adquisitivo vs. comportamiento real de gasto | Identificar clientes de alto valor (alto ingreso + alto gasto) vs. clientes de bajo aprovechamiento (alto ingreso + bajo gasto) |
+| Age + Spending Score | Comportamiento de consumo según generación | Diseñar campañas de marketing diferenciadas por edad |
+| Age + Annual Income | Ciclo de vida económico del cliente | Ajustar pricing y portafolio de productos según etapa de vida |
+
+**Conclusión general:** cada combinación de variables revela una dimensión distinta
+del cliente. La segmentación por Ingreso + Spending Score es la más directamente
+"accionable" en términos de rentabilidad inmediata, mientras que incorporar la edad
+(en cualquiera de las dos combinaciones) añade una dimensión demográfica/generacional
+que enriquece la estrategia de marketing con un enfoque de largo plazo y de ciclo de
+vida del cliente. Combinar los tres análisis da una visión mucho más completa que
+usar una sola segmentación de manera aislada.

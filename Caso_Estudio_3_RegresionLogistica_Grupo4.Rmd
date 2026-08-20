@@ -1,0 +1,709 @@
+---
+title: 'Caso de Estudio #3 — Modelos Predictivos: Regresión Logística'
+author: "Grupo 4"
+date: '2026'
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    number_sections: true
+  pdf_document:
+    toc: true
+    toc_depth: '3'
+subtitle: "92-0026 Análisis de Datos Avanzado para Negocios | Semana 14"
+---
+
+```{css, echo=FALSE}
+/* ── Cajas de instrucciones del curso ── */
+.caja-instruccion {
+  background-color: #F3F0F8;
+  border-left: 5px solid #4B2E83;
+  padding: 15px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.95em;
+}
+.caja-instruccion strong { color: #4B2E83; }
+
+.caja-reflexion {
+  background-color: #FFF5EB;
+  border-left: 5px solid #E87722;
+  padding: 15px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.95em;
+}
+.caja-reflexion strong { color: #E87722; }
+
+.caja-decision {
+  background-color: #EBF5EE;
+  border-left: 5px solid #2E6B3E;
+  padding: 15px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.95em;
+}
+.caja-decision strong { color: #2E6B3E; }
+
+.caja-alerta {
+  background-color: #FFF9E6;
+  border-left: 5px solid #D4A017;
+  padding: 15px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.95em;
+}
+.caja-alerta strong { color: #D4A017; }
+
+.caja-prompt {
+  background-color: #E8F4FD;
+  border-left: 5px solid #2196F3;
+  padding: 15px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.88em;
+  white-space: pre-wrap;
+}
+.caja-prompt strong { color: #1565C0; }
+
+.caja-ejercicio {
+  background-color: #E8F0FE;
+  border-left: 5px solid #1A73E8;
+  padding: 15px 20px;
+  margin: 20px 0;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.95em;
+}
+.caja-ejercicio strong { color: #1A73E8; }
+
+/* Tabla de rúbrica */
+table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+th { background-color: #4B2E83; color: white; padding: 10px; text-align: left; }
+td { padding: 8px 10px; border: 1px solid #ddd; vertical-align: top; }
+tr:nth-child(even) { background-color: #f9f9f9; }
+```
+
+---
+
+# Contexto del Caso
+
+<div class="caja-instruccion">
+<strong>🏥 Escenario empresarial</strong>
+
+Un hospital regional en Costa Rica desea implementar un **sistema de detección temprana de diabetes tipo 2**. El equipo médico ha recopilado datos clínicos de 800 pacientes y necesita un modelo predictivo que permita identificar pacientes con alto riesgo de desarrollar la enfermedad, optimizando así los recursos de prevención y atención.
+
+Su tarea como analista de datos es construir un **modelo de regresión logística** en R que prediga si un paciente tiene o no diabetes, basándose en sus características clínicas y de estilo de vida.
+</div>
+
+<div class="caja-alerta">
+<strong>⚠️ Indicaciones generales</strong>
+
+- Este caso se completa **durante la sesión de clase**.
+- Utilice un LLM (Claude o ChatGPT) como copiloto para generar el código R necesario.
+- **Copie el prompt proporcionado**, péguelo en el LLM, obtenga el código, ejecútelo en Posit Cloud y analice críticamente el resultado.
+- Todos los chunks de código están vacíos: usted los completa con lo que el LLM genere.
+- Responda las preguntas de reflexión **con sus propias palabras**.
+- **Valor total: 25 puntos.**
+</div>
+
+---
+
+# Sección 1: Carga y Exploración Inicial (5 puntos)
+
+## 1.1 Cargar librerías y datos
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Necesito cargar un dataset en R para un análisis de regresión logística. El archivo se llama "diabetes_costa_rica.csv" y contiene datos clínicos de pacientes.
+
+Escribe código en R que:
+1. Cargue las librerías: tidyverse, scales, caret
+2. Lea el archivo CSV con read_csv()
+3. Muestre las primeras 6 filas con head()
+4. Muestre las dimensiones con dim()
+5. Muestre la estructura con glimpse()
+
+Agrega comentarios en español. Usa código simple y directo, sin pipelines complejos.
+</div>
+
+```{r carga-datos}
+# Cargar las librerías necesarias
+library(tidyverse)
+library(scales)
+library(caret)
+
+# Cargar el dataset
+datos <- read_csv("diabetes_costa_rica.csv")
+
+# Mostrar las primeras 6 filas
+head(datos)
+
+# Mostrar las dimensiones del dataset
+dim(datos)
+
+# Mostrar la estructura de las variables
+glimpse(datos)
+```
+
+## 1.2 Exploración de la variable objetivo
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Tengo un dataframe en R llamado "datos" con una columna "diagnostico_diabetes" que tiene valores 0 (no diabetes) y 1 (diabetes).
+
+Escribe código en R que:
+1. Cree una tabla de frecuencias y porcentajes de diagnostico_diabetes
+2. Cree un gráfico de barras con ggplot2 mostrando la distribución, usando fill = factor(diagnostico_diabetes), con colores "#4B2E83" para 0 y "#E87722" para 1
+3. Agregue etiquetas con el conteo sobre cada barra usando geom_text()
+4. Use labs() con título "Distribución del Diagnóstico de Diabetes", eje x "Diagnóstico", eje y "Cantidad de pacientes"
+5. Use theme_minimal()
+
+Código simple y directo, con comentarios en español.
+</div>
+
+```{r variable-objetivo}
+# Crear tabla de frecuencias y porcentajes del diagnóstico
+tabla_diagnostico <- datos |>
+  count(diagnostico_diabetes) |>
+  mutate(porcentaje = percent(n / sum(n), accuracy = 0.01))
+
+tabla_diagnostico
+
+# Crear gráfico de barras de la variable objetivo
+ggplot(tabla_diagnostico,
+       aes(x = factor(diagnostico_diabetes),
+           y = n,
+           fill = factor(diagnostico_diabetes))) +
+  geom_col() +
+  geom_text(aes(label = n), vjust = -0.5) +
+  scale_fill_manual(values = c("0" = "#4B2E83", "1" = "#E87722")) +
+  labs(
+    title = "Distribución del Diagnóstico de Diabetes",
+    x = "Diagnóstico",
+    y = "Cantidad de pacientes",
+    fill = "Diagnóstico"
+  ) +
+  theme_minimal()
+```
+
+<div class="caja-reflexion">
+<strong>🤔 Pregunta 1 (2 puntos)</strong>
+
+a) ¿Cuántas filas y columnas tiene el dataset? ¿Cuántas variables son numéricas y cuántas categóricas?
+
+b) ¿El dataset está balanceado? ¿Qué porcentaje tiene diabetes (1) y qué porcentaje no (0)? ¿Cómo podría afectar esto al modelo?
+
+**Su respuesta:**
+
+a) El dataset original tiene **812 filas y 15 columnas**. Al revisar la estructura observamos **10 variables numéricas y 5 variables categóricas**. Dentro de las numéricas se encuentran tanto el identificador del paciente como la variable objetivo.
+
+b) La variable objetivo no está perfectamente balanceada, pero tampoco presenta un desbalance extremo. Hay **465 pacientes sin diabetes (57.27%)** y **347 pacientes con diabetes (42.73%)**. Esto puede hacer que el modelo tenga cierta tendencia a clasificar más casos como 0, ya que es la clase con mayor cantidad de observaciones. Por esta razón es importante conservar proporciones similares al separar los datos y revisar métricas adicionales al accuracy, especialmente el recall de los pacientes con diabetes.
+</div>
+
+## 1.3 Exploración visual rápida
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Tengo un dataframe en R llamado "datos" con columnas numéricas: edad, imc, glucosa, presion_arterial. También tiene la columna diagnostico_diabetes (0 o 1).
+
+Escribe código en R que cree un panel de 4 boxplots (2x2) comparando cada variable numérica según el diagnóstico de diabetes. Usa:
+1. par(mfrow = c(2, 2)) para organizar los 4 gráficos
+2. boxplot() de R base para cada variable, con col = c("#4B2E83", "#E87722")
+3. Títulos descriptivos en español para cada gráfico
+4. Nombres "No diabetes" y "Sí diabetes" en el eje x
+
+Código simple con comentarios en español.
+</div>
+
+```{r boxplots-exploracion}
+# Organizar los gráficos en un panel de 2 x 2
+par(mfrow = c(2, 2))
+
+# Comparar edad según diagnóstico
+boxplot(edad ~ diagnostico_diabetes,
+        data = datos,
+        col = c("#4B2E83", "#E87722"),
+        names = c("No diabetes", "Sí diabetes"),
+        main = "Edad según diagnóstico",
+        ylab = "Edad")
+
+# Comparar IMC según diagnóstico
+boxplot(imc ~ diagnostico_diabetes,
+        data = datos,
+        col = c("#4B2E83", "#E87722"),
+        names = c("No diabetes", "Sí diabetes"),
+        main = "IMC según diagnóstico",
+        ylab = "IMC")
+
+# Comparar glucosa según diagnóstico
+boxplot(glucosa ~ diagnostico_diabetes,
+        data = datos,
+        col = c("#4B2E83", "#E87722"),
+        names = c("No diabetes", "Sí diabetes"),
+        main = "Glucosa según diagnóstico",
+        ylab = "Glucosa")
+
+# Comparar presión arterial según diagnóstico
+boxplot(presion_arterial ~ diagnostico_diabetes,
+        data = datos,
+        col = c("#4B2E83", "#E87722"),
+        names = c("No diabetes", "Sí diabetes"),
+        main = "Presión arterial según diagnóstico",
+        ylab = "Presión arterial")
+```
+
+---
+
+# Sección 2: Preprocesamiento de Datos (5 puntos)
+
+## 2.1 Limpieza básica
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Tengo un dataframe en R llamado "datos". Necesito limpiarlo antes de hacer regresión logística.
+
+Escribe código en R que:
+1. Cuente los valores nulos por columna usando colSums(is.na())
+2. Elimine las filas con valores nulos usando na.omit()
+3. Cuente las filas duplicadas usando sum(duplicated())
+4. Elimine las filas duplicadas usando distinct()
+5. Muestre las dimensiones finales del dataframe limpio
+6. Guarde el resultado en un objeto llamado "datos_limpio"
+
+Código simple y directo, con comentarios en español.
+</div>
+
+```{r limpieza}
+# Contar valores nulos por columna
+colSums(is.na(datos))
+
+# Eliminar filas que contienen valores nulos
+datos_limpio <- na.omit(datos)
+
+# Contar filas duplicadas
+sum(duplicated(datos_limpio))
+
+# Eliminar filas duplicadas
+datos_limpio <- datos_limpio |>
+  distinct()
+
+# Mostrar las dimensiones finales
+dim(datos_limpio)
+```
+
+## 2.2 Codificación de variables categóricas
+
+<div class="caja-instruccion">
+<strong>📌 Concepto clave</strong>
+
+La regresión logística requiere que todas las variables de entrada sean **numéricas**. Las variables categóricas como `genero`, `actividad_fisica`, `antecedentes_familiares`, `consumo_alcohol` y `fumador` deben transformarse a valores numéricos.
+</div>
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Tengo un dataframe en R llamado "datos_limpio" con estas variables categóricas:
+- genero: "Masculino", "Femenino"
+- actividad_fisica: "Sedentario", "Moderado", "Activo"
+- antecedentes_familiares: "Sí", "No"
+- consumo_alcohol: "Nunca", "Ocasional", "Frecuente"
+- fumador: "Sí", "No"
+
+Escribe código en R que:
+1. Use mutate() para convertir cada variable categórica a numérica con case_when() o ifelse()
+2. Para variables binarias (genero, antecedentes_familiares, fumador): 1/0
+3. Para actividad_fisica: Sedentario=0, Moderado=1, Activo=2
+4. Para consumo_alcohol: Nunca=0, Ocasional=1, Frecuente=2
+5. Elimine la columna id_paciente con select(-id_paciente)
+6. Muestre str() del resultado
+7. Guarde en "datos_modelo"
+
+Código simple con comentarios en español.
+</div>
+
+```{r codificacion}
+# Convertir las variables categóricas a valores numéricos
+datos_modelo <- datos_limpio |>
+  mutate(
+    genero = ifelse(genero == "Masculino", 1, 0),
+    actividad_fisica = case_when(
+      actividad_fisica == "Sedentario" ~ 0,
+      actividad_fisica == "Moderado" ~ 1,
+      actividad_fisica == "Activo" ~ 2
+    ),
+    antecedentes_familiares = ifelse(antecedentes_familiares == "Sí", 1, 0),
+    consumo_alcohol = case_when(
+      consumo_alcohol == "Nunca" ~ 0,
+      consumo_alcohol == "Ocasional" ~ 1,
+      consumo_alcohol == "Frecuente" ~ 2
+    ),
+    fumador = ifelse(fumador == "Sí", 1, 0)
+  ) |>
+  select(-id_paciente)
+
+# Revisar la estructura final para el modelo
+str(datos_modelo)
+```
+
+## 2.3 División en entrenamiento y prueba
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Tengo un dataframe en R llamado "datos_modelo" donde la variable objetivo es "diagnostico_diabetes".
+
+Escribe código en R que:
+1. Fije la semilla con set.seed(42)
+2. Use la función createDataPartition() de la librería caret para dividir los datos en 80% entrenamiento y 20% prueba, estratificando por la variable objetivo
+3. Cree los objetos: train_data y test_data
+4. Muestre las dimensiones de cada conjunto con dim()
+5. Muestre la proporción de la variable objetivo en cada conjunto usando table() y prop.table()
+
+Código simple y directo, con comentarios en español.
+</div>
+
+```{r division-datos}
+# Fijar una semilla para que la división sea reproducible
+set.seed(42)
+
+# Crear una división estratificada: 80% entrenamiento y 20% prueba
+train_index <- createDataPartition(
+  factor(datos_modelo$diagnostico_diabetes),
+  p = 0.8,
+  list = FALSE
+)
+
+# Crear los conjuntos de entrenamiento y prueba
+train_data <- datos_modelo[train_index, ]
+test_data <- datos_modelo[-train_index, ]
+
+# Mostrar las dimensiones de cada conjunto
+dim(train_data)
+dim(test_data)
+
+# Revisar la distribución de la variable objetivo en entrenamiento
+table(train_data$diagnostico_diabetes)
+prop.table(table(train_data$diagnostico_diabetes))
+
+# Revisar la distribución de la variable objetivo en prueba
+table(test_data$diagnostico_diabetes)
+prop.table(table(test_data$diagnostico_diabetes))
+```
+
+<div class="caja-reflexion">
+<strong>🤔 Pregunta 2 (2 puntos)</strong>
+
+a) ¿Por qué es necesario dividir los datos en un conjunto de entrenamiento y uno de prueba? ¿Qué pasaría si evaluáramos el modelo con los mismos datos que usamos para entrenarlo?
+
+b) ¿Qué significa que la división sea "estratificada" y por qué es importante en este caso?
+
+**Su respuesta:**
+
+a) Es necesario separar los datos porque el modelo debe evaluarse con observaciones que no haya utilizado durante el entrenamiento. Si se evaluara con los mismos datos con los que se ajustó, el resultado podría verse mejor de lo que realmente sería al recibir pacientes nuevos, ya que estaríamos midiendo en información que el modelo ya conoce.
+
+b) Una división estratificada significa que se intenta mantener una proporción similar de pacientes con y sin diabetes en los conjuntos de entrenamiento y prueba. En este caso es importante porque la clase 0 tiene más observaciones que la clase 1. La estratificación evita que una división aleatoria deje una proporción muy diferente en alguno de los conjuntos y permite una comparación más representativa.
+</div>
+
+---
+
+# Sección 3: Modelo de Regresión Logística (5 puntos)
+
+## 3.1 Entrenamiento del modelo
+
+<div class="caja-instruccion">
+<strong>📌 Concepto clave</strong>
+
+En R, la regresión logística se ajusta con la función `glm()` usando `family = binomial`. A diferencia de Python (donde se usa `LogisticRegression` de sklearn), en R el modelo forma parte de la familia de **modelos lineales generalizados**.
+</div>
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Tengo un dataframe de entrenamiento en R llamado "train_data" donde la variable objetivo es "diagnostico_diabetes" (0 o 1).
+
+Escribe código en R que:
+1. Ajuste un modelo de regresión logística con glm(), usando family = binomial
+2. La fórmula debe ser: diagnostico_diabetes ~ . (usar todas las variables)
+3. Guarde el modelo en un objeto llamado "modelo_log"
+4. Muestre el resumen del modelo con summary()
+
+Código simple con comentarios en español.
+</div>
+
+```{r modelo-logistico}
+# Ajustar el modelo de regresión logística usando todas las variables
+modelo_log <- glm(
+  diagnostico_diabetes ~ .,
+  data = train_data,
+  family = binomial
+)
+
+# Mostrar el resumen del modelo
+summary(modelo_log)
+```
+
+## 3.2 Coeficientes del modelo
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Tengo un modelo de regresión logística en R llamado "modelo_log" ajustado con glm().
+
+Escribe código en R que:
+1. Extraiga los coeficientes del modelo con coef()
+2. Cree un dataframe con las variables y sus coeficientes (sin el intercepto)
+3. Ordene los coeficientes por valor absoluto de mayor a menor
+4. Cree un gráfico de barras horizontales con ggplot2 mostrando los coeficientes, coloreando en "#2E6B3E" los positivos y "#E87722" los negativos
+5. Use coord_flip(), theme_minimal(), y título "Coeficientes del Modelo de Regresión Logística"
+
+Código simple con comentarios en español.
+</div>
+
+```{r coeficientes}
+# Extraer los coeficientes del modelo
+coeficientes <- coef(modelo_log)
+
+# Crear un dataframe sin incluir el intercepto
+df_coeficientes <- data.frame(
+  variable = names(coeficientes)[-1],
+  coeficiente = as.numeric(coeficientes[-1])
+)
+
+# Calcular valor absoluto, identificar el signo y ordenar
+df_coeficientes <- df_coeficientes |>
+  mutate(
+    valor_absoluto = abs(coeficiente),
+    signo = ifelse(coeficiente >= 0, "Positivo", "Negativo")
+  ) |>
+  arrange(desc(valor_absoluto))
+
+# Mostrar los coeficientes ordenados
+df_coeficientes
+
+# Graficar los coeficientes del modelo
+ggplot(df_coeficientes,
+       aes(x = reorder(variable, valor_absoluto),
+           y = coeficiente,
+           fill = signo)) +
+  geom_col() +
+  scale_fill_manual(values = c("Positivo" = "#2E6B3E",
+                               "Negativo" = "#E87722")) +
+  coord_flip() +
+  labs(
+    title = "Coeficientes del Modelo de Regresión Logística",
+    x = "Variable",
+    y = "Coeficiente",
+    fill = "Signo"
+  ) +
+  theme_minimal()
+```
+
+<div class="caja-reflexion">
+<strong>🤔 Pregunta 3 (2 puntos)</strong>
+
+a) Según el resumen del modelo (`summary`), ¿cuáles variables son estadísticamente significativas (p-valor < 0.05)?
+
+b) ¿Cuáles son las 3 variables con mayor coeficiente en valor absoluto? ¿Qué significan los signos positivos y negativos en el contexto de la predicción de diabetes?
+
+**Su respuesta:**
+
+a) Según el resumen del modelo, las variables con **p-valor menor a 0.05** fueron: **edad, imc, presion_arterial, glucosa, actividad_fisica, antecedentes_familiares y fumador**. Estas variables mostraron evidencia estadística de asociación con el diagnóstico dentro del modelo ajustado.
+
+b) Las tres variables con mayor coeficiente en valor absoluto fueron **antecedentes_familiares (0.752)**, **fumador (0.469)** y **genero (0.368)**. Es importante notar que género aparece entre los coeficientes de mayor magnitud, aunque no resultó estadísticamente significativo al 5%. Un coeficiente positivo indica que, al aumentar esa variable y mantener las demás constantes, aumenta la probabilidad estimada de diabetes. Un coeficiente negativo indica una relación en sentido contrario. Por ejemplo, `actividad_fisica` obtuvo un coeficiente negativo, por lo que niveles mayores de actividad se relacionan con una menor probabilidad estimada de diabetes en este modelo.
+</div>
+
+---
+
+# Sección 4: Evaluación del Modelo (5 puntos)
+
+## 4.1 Predicciones y matriz de confusión
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Tengo un modelo de regresión logística en R llamado "modelo_log" y un conjunto de prueba llamado "test_data" con la variable objetivo "diagnostico_diabetes".
+
+Escribe código en R que:
+1. Genere probabilidades predichas con predict(modelo_log, test_data, type = "response")
+2. Convierta las probabilidades a clases usando un umbral de 0.5 (si prob >= 0.5 entonces 1, sino 0)
+3. Cree la matriz de confusión con table() comparando valores reales vs predichos
+4. Muestre la matriz de confusión
+5. Calcule manualmente: accuracy, precision, recall y F1-score usando los valores de la matriz
+6. Muestre cada métrica con cat() y round() a 3 decimales
+
+Código simple y directo, con comentarios en español. No usar confusionMatrix() de caret, calcular manualmente.
+</div>
+
+```{r predicciones-metricas}
+# Generar las probabilidades predichas para el conjunto de prueba
+probabilidades <- predict(modelo_log, test_data, type = "response")
+
+# Convertir las probabilidades a clases usando un umbral de 0.5
+predicciones <- ifelse(probabilidades >= 0.5, 1, 0)
+
+# Guardar los valores reales
+reales <- test_data$diagnostico_diabetes
+
+# Crear y mostrar la matriz de confusión
+matriz_confusion <- table(Real = reales, Predicho = predicciones)
+matriz_confusion
+
+# Extraer los valores de la matriz de confusión
+TN <- matriz_confusion["0", "0"]
+FP <- matriz_confusion["0", "1"]
+FN <- matriz_confusion["1", "0"]
+TP <- matriz_confusion["1", "1"]
+
+# Calcular las métricas manualmente
+accuracy <- (TP + TN) / (TP + TN + FP + FN)
+precision <- TP / (TP + FP)
+recall <- TP / (TP + FN)
+f1 <- 2 * (precision * recall) / (precision + recall)
+
+# Mostrar las métricas con tres decimales
+cat("Accuracy:", round(accuracy, 3), "\n")
+cat("Precision:", round(precision, 3), "\n")
+cat("Recall:", round(recall, 3), "\n")
+cat("F1-score:", round(f1, 3), "\n")
+```
+
+## 4.2 Visualización de la matriz de confusión
+
+<div class="caja-prompt">
+<strong>📋 Prompt para el LLM — Copie y pegue:</strong>
+
+Tengo vectores en R: "reales" (valores reales de diagnostico_diabetes del test_data) y "predicciones" (las predicciones del modelo, 0 o 1).
+
+Escribe código en R que:
+1. Cree la matriz de confusión como tabla con table(Predicho = predicciones, Real = reales)
+2. Convierta la tabla a dataframe para ggplot
+3. Cree un heatmap de la matriz de confusión con ggplot2 usando geom_tile()
+4. Use fill con escala de colores de "#F3F0F8" a "#4B2E83"
+5. Agregue los valores numéricos dentro de cada celda con geom_text() en tamaño grande
+6. Etiquetas: eje x "Valor Real", eje y "Valor Predicho", título "Matriz de Confusión"
+7. Use theme_minimal()
+
+Código simple con comentarios en español.
+</div>
+
+```{r visualizar-matriz}
+# Crear la matriz de confusión para la visualización
+matriz_visual <- table(Predicho = predicciones, Real = reales)
+
+# Convertir la tabla a dataframe
+matriz_df <- as.data.frame(matriz_visual)
+
+# Crear el heatmap de la matriz de confusión
+ggplot(matriz_df, aes(x = Real, y = Predicho, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), size = 6) +
+  scale_fill_gradient(low = "#F3F0F8", high = "#4B2E83") +
+  labs(
+    title = "Matriz de Confusión",
+    x = "Valor Real",
+    y = "Valor Predicho",
+    fill = "Cantidad"
+  ) +
+  theme_minimal()
+```
+
+<div class="caja-reflexion">
+<strong>🤔 Pregunta 4 (3 puntos)</strong>
+
+a) Interprete la matriz de confusión: ¿cuántos verdaderos positivos (TP), verdaderos negativos (TN), falsos positivos (FP) y falsos negativos (FN) obtuvo?
+
+b) **En el contexto médico de este caso:** ¿qué es más grave, un falso positivo (decirle a un paciente sano que tiene diabetes) o un falso negativo (no detectar a un paciente que sí tiene diabetes)? Justifique.
+
+c) Según su respuesta anterior, ¿qué métrica es más importante para este hospital: *precision* o *recall*? ¿Por qué?
+
+**Su respuesta:**
+
+a) La matriz de confusión obtuvo **TP = 20**, **TN = 73**, **FP = 11** y **FN = 41**. Esto significa que el modelo identificó correctamente a 20 pacientes con diabetes y a 73 pacientes sin diabetes. Sin embargo, clasificó como positivos a 11 pacientes que realmente no tenían diabetes y dejó sin detectar a 41 pacientes que sí tenían la enfermedad. Las métricas obtenidas fueron aproximadamente **accuracy = 0.641**, **precision = 0.645**, **recall = 0.328** y **F1 = 0.435**.
+
+b) En este contexto consideramos más grave un **falso negativo**, porque significa que un paciente que realmente tiene diabetes recibe una clasificación negativa. Esto podría retrasar nuevas pruebas, seguimiento o tratamiento. Un falso positivo también puede generar preocupación y pruebas adicionales, pero es más fácil confirmarlo posteriormente con una evaluación médica.
+
+c) Para este hospital sería más importante el **recall**, porque mide qué proporción de los pacientes que realmente tienen diabetes logra identificar el modelo. Como el objetivo es detección temprana, interesa reducir la cantidad de pacientes positivos que se quedan sin detectar.
+</div>
+
+---
+
+# Sección 5: Conclusiones y Reflexión (5 puntos)
+
+<div class="caja-reflexion">
+<strong>🤔 Pregunta 5 — Conclusiones (2.5 puntos)</strong>
+
+Redacte un párrafo de conclusión (mínimo 100 palabras) que aborde:
+
+a) ¿Cuáles fueron las variables más influyentes en la predicción de diabetes?
+
+b) ¿El modelo tiene un rendimiento aceptable para uso clínico? ¿Por qué sí o por qué no?
+
+c) ¿Qué acciones concretas le recomendaría al hospital para mejorar este modelo?
+
+**Su respuesta:**
+
+El modelo mostró que varias variables tienen relación con la predicción de diabetes. Por magnitud del coeficiente destacaron los antecedentes familiares, el hábito de fumar y el género, mientras que también resultaron estadísticamente significativas variables clínicas importantes como el IMC, la glucosa, la edad, la presión arterial y la actividad física. Sin embargo, consideramos que el rendimiento actual no es suficiente para utilizar el modelo como herramienta clínica de decisión por sí sola. Aunque obtuvo un accuracy cercano al 64.1% y una precision de 64.5%, el recall fue solamente de 32.8%, lo que significa que dejó sin detectar 41 de los 61 pacientes con diabetes del conjunto de prueba. Para mejorar el modelo recomendamos ampliar y validar la base de datos con más pacientes, revisar el tratamiento de datos faltantes, incorporar otras variables clínicas relevantes, probar distintos umbrales de clasificación para reducir falsos negativos y validar el modelo con nuevos datos antes de considerar su implementación. En todo caso, debería utilizarse como apoyo al personal médico y no como sustituto del diagnóstico profesional.
+</div>
+
+<div class="caja-reflexion">
+<strong>Pregunta 6 — Reflexión Ética (2.5 puntos)</strong>
+
+Reflexione brevemente sobre:
+
+a) ¿Qué riesgos éticos existen al utilizar un modelo de machine learning para decisiones de salud?
+
+b) ¿Cómo podrían los sesgos en los datos afectar las predicciones y perjudicar a ciertas poblaciones?
+
+**Su respuesta:**
+
+El uso de machine learning en salud presenta riesgos porque una predicción incorrecta puede afectar decisiones que tienen consecuencias directas sobre los pacientes. Entre los principales riesgos se encuentran los falsos negativos, los falsos positivos, la privacidad de los datos clínicos y una dependencia excesiva de la recomendación del modelo. Además, si los datos utilizados para entrenarlo no representan adecuadamente a distintos grupos de edad, género, condiciones sociales u otras características de la población, el modelo podría funcionar mejor para algunos pacientes que para otros. Esto podría generar decisiones injustas o dejar ciertos grupos con mayor riesgo de errores. Por esta razón, antes de utilizar un modelo de este tipo se debería evaluar su desempeño en diferentes grupos, proteger la información de los pacientes y mantener siempre la revisión de profesionales de salud.
+</div>
+
+---
+
+# Documentación del Uso de IA
+
+<div class="caja-decision">
+<strong>📝 Complete la siguiente tabla</strong>
+
+Documente cada uso de IA generativa durante este caso de estudio.
+</div>
+
+| Sección | Prompt utilizado (resumen) | Herramienta | ¿Modificó el código generado? | Evaluación crítica |
+|---------|---------------------------|-------------|-------------------------------|-------------------|
+| 1.1 | Solicitamos cargar `tidyverse`, `scales` y `caret`, importar el CSV y revisar `head()`, `dim()` y `glimpse()` antes de cualquier transformación, manteniendo un código básico y comentado. | ChatGPT | No, solamente se revisaron los nombres de los objetos. | El resultado permitió confirmar tamaño, tipos de variables y categorías antes de avanzar. Fue importante revisar la estructura en lugar de asumir que todas las columnas ya eran numéricas. |
+| 1.2 | Pedimos calcular frecuencias y porcentajes de la variable objetivo y después construir un gráfico de barras con los colores definidos, incluyendo los conteos sobre cada barra para analizar visualmente el balance. | ChatGPT | Sí, se reutilizó la tabla de frecuencias para construir el gráfico y evitar repetir cálculos. | El código mostró claramente que existe una diferencia entre clases, aunque no un desbalance extremo. La tabla fue útil para obtener porcentajes exactos y el gráfico para visualizar la diferencia. |
+| 1.3 | Solicitamos comparar edad, IMC, glucosa y presión arterial entre los dos diagnósticos mediante cuatro boxplots de R base organizados en un panel 2x2, sin agregar técnicas de visualización más avanzadas. | ChatGPT | No. | Los boxplots permitieron una comparación exploratoria rápida entre grupos. Se interpretaron como diferencias visuales y no como evidencia causal. |
+| 2.1 | Pedimos revisar primero los NA por columna, eliminarlos, contar duplicados después de esa limpieza, eliminar duplicados y verificar las dimensiones finales en un objeto `datos_limpio`. | ChatGPT | No. | La secuencia fue útil porque permitió observar el efecto de cada paso. Después de remover los NA quedaron 739 filas, se detectaron 11 duplicados y el conjunto final quedó con 728 registros. |
+| 2.2 | Solicitamos transformar las cinco variables categóricas a códigos numéricos definidos, eliminar `id_paciente` y revisar con `str()` que el conjunto final pudiera utilizarse en `glm()`. | ChatGPT | Sí, se definió explícitamente `Masculino = 1` y `Femenino = 0`, ya que el prompt solo indicaba una codificación binaria 1/0. | La codificación produjo un conjunto completamente numérico. También se verificó que el identificador no entrara como predictor porque no representa una característica clínica. |
+| 2.3 | Pedimos una división reproducible 80/20 con `set.seed(42)` y `createDataPartition()`, manteniendo la proporción de 0 y 1 y comprobándola con `table()` y `prop.table()` en ambos conjuntos. | ChatGPT | Sí, se usó `factor()` dentro de `createDataPartition()` para asegurar la estratificación por clase sin cambiar la variable objetivo numérica usada por el modelo. | La división conservó prácticamente la misma proporción de diagnósticos: alrededor de 42% positivos tanto en entrenamiento como en prueba. Esto hizo más comparable la evaluación. |
+| 3.1 | Solicitamos ajustar una regresión logística con `glm(family = binomial)` usando todas las variables disponibles y revisar el `summary()` para identificar coeficientes y p-valores. | ChatGPT | No. | El modelo se ajustó correctamente con la técnica solicitada. El resumen permitió diferenciar entre variables significativas y variables con coeficientes de mayor magnitud. |
+| 3.2 | Pedimos extraer los coeficientes, excluir el intercepto, calcular su valor absoluto, ordenarlos y graficarlos horizontalmente diferenciando coeficientes positivos y negativos. | ChatGPT | Sí, se agregaron columnas auxiliares `valor_absoluto` y `signo` para ordenar y colorear el gráfico de forma clara. | La visualización facilitó comparar dirección y magnitud. También se observó que un coeficiente grande no necesariamente implica significancia estadística, como ocurrió con género. |
+| 4.1 | Solicitamos predecir probabilidades, aplicar umbral 0.5, construir la matriz de confusión y calcular manualmente accuracy, precision, recall y F1 a partir de TP, TN, FP y FN, sin usar `confusionMatrix()`. | ChatGPT | No. | El cálculo manual ayudó a entender de dónde sale cada métrica. El resultado más preocupante fue el recall bajo, porque el modelo dejó varios pacientes con diabetes sin identificar. |
+| 4.2 | Pedimos convertir la matriz de confusión a dataframe y crear un heatmap con `geom_tile()`, escala de color indicada y conteos visibles dentro de cada celda. | ChatGPT | No. | El heatmap hizo más evidente la cantidad de falsos negativos. La visualización complementó las métricas y ayudó a relacionar el desempeño estadístico con el riesgo clínico. |
+
+---
+
+# Rúbrica de Evaluación — Caso de Estudio #3
+
+| Criterio | Excelente (5 pts.) | Bueno (4 pts.) | Aceptable (3 pts.) | Insuficiente (2 pts.) | Deficiente (1 pt.) |
+|----------|-------------------|----------------|--------------------|-----------------------|-------------------|
+| **Claridad metodológica en el análisis** | Proceso claro, estructurado y bien justificado. | Metodología clara con leves omisiones. | Metodología entendible pero superficial. | Metodología confusa. | Sin metodología definida. |
+| **Aplicación correcta de técnicas** | Técnicas aplicadas correctamente con dominio técnico. | Técnicas aplicadas correctamente con leves errores. | Técnicas aplicadas de forma parcial. | Aplicación incorrecta o limitada. | No aplica técnicas. |
+| **Documentación crítica del uso de IA** | Documenta prompt, resultado y análisis crítico profundo. | Documenta adecuadamente con alguna omisión. | Documenta de forma general sin crítica. | Documentación mínima. | No documenta el uso de IA. |
+| **Interpretación crítica de resultados** | Interpreta profunda y críticamente los datos. | Interpretación clara pero no siempre crítica. | Interpretación general y superficial. | Interpretación limitada. | Sin interpretación de resultados. |
+| **Presentación del informe** | Informe completo, profesional y bien estructurado. | Informe completo con pequeñas mejoras. | Informe aceptable con algunas deficiencias. | Informe incompleto o poco profesional. | Informe ausente o con graves problemas. |
+
+**Total: 25 puntos (equivalentes al 10% de la nota final)**
+
+---
+
+*Caso de estudio diseñado para el curso 92-0026 — Análisis de Datos Avanzado para Negocios — ULACIT — 2026*

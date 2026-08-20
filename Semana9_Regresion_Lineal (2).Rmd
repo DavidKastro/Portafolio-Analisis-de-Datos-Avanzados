@@ -1,0 +1,412 @@
+---
+title: "Semana 9 — Regresión Lineal Simple y Múltiple"
+author: "92-0026 · Análisis de Datos Avanzado para Negocios"
+date: "`r format(Sys.Date(), '%d de %B de %Y')`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: show
+  pdf_document:
+    toc: true
+    toc_depth: '3'
+subtitle: Predicción del Precio de Venta de Automóviles Usados | Dataset CardEkho
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width  = 9,
+  fig.height = 5.5,
+  comment = "#>"
+)
+```
+
+---
+
+# Introducción y Contexto del Caso
+
+<div class="box-instruccion">
+**Contexto empresarial:** CardEkho es una plataforma en línea de compra y venta de automóviles usados en India. El equipo de analítica necesita construir un modelo que estime el **precio de venta** de un vehículo a partir de sus características, para apoyar las decisiones de fijación de precios de los vendedores.
+
+**Objetivo:** Construir, comparar y evaluar dos modelos de regresión lineal:  
+1. **Modelo simple** — usando el predictor de mayor correlación con `Selling_Price`.  
+2. **Modelo múltiple** — incorporando varios predictores seleccionados mediante la matriz de correlación.
+</div>
+
+---
+
+# Carga de Paquetes y Datos
+
+## Paquetes requeridos
+
+```{r paquetes}
+# Carga de librerías
+library(tidyverse)   # Manipulación y visualización de datos
+library(corrplot)    # Visualización de matrices de correlación
+library(ggplot2)     # Gráficos
+library(scales)      # Formatos de ejes
+```
+
+<div class="box-prompt">
+**💬 Prompt sugerido para Claude / ChatGPT:**
+
+*"Estoy trabajando en R con el paquete tidyverse. Necesito cargar un CSV llamado 'cardekho_data.csv' y hacer una exploración inicial: mostrar las primeras filas, el tipo de cada columna y un resumen estadístico. Genera el código usando read_csv(), glimpse() y summary()."*
+</div>
+
+```{r carga-datos}
+# Carga del dataset
+autos <- read_csv("cardekho_data.csv")
+
+# Exploración inicial
+glimpse(autos)
+```
+
+```{r resumen}
+# Resumen estadístico de las variables numéricas
+summary(autos)
+```
+
+<div class="box-reflexion">
+**🔍 Pausa de reflexión:** ¿Cuántas observaciones tiene el dataset? ¿Hay valores NA visibles en el summary? ¿Qué escala tiene `Selling_Price` (en lacs = 100,000 rupias)?
+</div>
+
+---
+
+# Paso 1: Matriz de Correlación
+
+Antes de construir cualquier modelo, es fundamental identificar qué variables numéricas tienen mayor relación **lineal** con la variable objetivo `Selling_Price`.
+
+<div class="box-instruccion">
+**Instrucción:** Selecciona únicamente las columnas numéricas del dataset y calcula la matriz de correlación de Pearson.
+</div>
+
+<div class="box-prompt">
+**💬 Prompt sugerido:**
+
+*"Tengo un dataframe en R llamado 'autos' con variables mixtas (numéricas y categóricas). Genera código usando dplyr y la función cor() para: 1) seleccionar solo las variables numéricas con select(where(is.numeric)), 2) calcular la matriz de correlación de Pearson, 3) mostrar la correlación de todas las variables con 'Selling_Price' ordenada de mayor a menor."*
+</div>
+
+```{r matriz-correlacion}
+# Seleccionar variables numéricas
+numericas <- autos %>%
+  select(where(is.numeric))
+
+# Calcular matriz de correlación
+matriz_cor <- cor(numericas, use = "complete.obs")
+
+# Mostrar correlaciones con Selling_Price ordenadas
+correlaciones_target <- matriz_cor["Selling_Price", ] %>%
+  sort(decreasing = TRUE) %>%
+  round(3)
+
+print(correlaciones_target)
+```
+
+## Visualización del heatmap de correlación
+
+<div class="box-prompt">
+**💬 Prompt sugerido:**
+
+*"Tengo una matriz de correlación en R llamada 'matriz_cor'. Genera código usando corrplot() para visualizarla como un heatmap con: método 'color', tipo 'upper', paleta de colores de azul a rojo, números de correlación dentro de cada celda con 2 decimales, y título 'Matriz de Correlación — Dataset CardEkho'."*
+</div>
+
+```{r heatmap-correlacion, fig.height=6}
+# Heatmap de correlación
+corrplot(
+  matriz_cor,
+  method   = "color",
+  type     = "upper",
+  col      = colorRampPalette(c("#C0392B", "#FFFFFF", "#2E6B3E"))(200),
+  addCoef.col = "black",
+  number.cex  = 0.85,
+  tl.col   = "#333333",
+  tl.srt   = 45,
+  tl.cex   = 0.9,
+  title    = "Matriz de Correlación — Dataset CardEkho",
+  mar      = c(0, 0, 2, 0)
+)
+```
+
+## Decisión de variables
+
+<div class="box-decision">
+** Decisión basada en la correlación:**
+
+Observando la fila de `Selling_Price`:  
+
+- **`Present_Price`** (precio de catálogo actual): correlación más alta → **predictor para el modelo simple**.  
+- **`Year`** (año de fabricación): segunda correlación positiva relevante.  
+- **`Kms_Driven`** (kilómetros recorridos): correlación negativa moderada.  
+
+→ El **modelo múltiple** usará: `Present_Price + Year + Kms_Driven`.
+</div>
+
+---
+
+# Paso 2: Regresión Lineal Simple
+
+El modelo simple usa **únicamente** `Present_Price` como predictor, por ser la variable con mayor correlación lineal con `Selling_Price`.
+
+**Ecuación del modelo:**  
+$$\hat{Y} = \beta_0 + \beta_1 \cdot \text{Present Price}$$
+
+<div class="box-prompt">
+**💬 Prompt sugerido:**
+
+*"Tengo un dataframe 'autos' en R con variables 'Selling_Price' y 'Present_Price'. Genera código para: 1) ajustar un modelo de regresión lineal simple con lm(), 2) mostrar el resumen con summary(), 3) hacer un gráfico de dispersión con ggplot2 que incluya la recta de regresión con geom_smooth(method='lm'), puntos en color '#4B2E83', recta en '#E87722', y etiquetas en español."*
+</div>
+
+## Ajuste del modelo simple
+
+```{r modelo-simple}
+# Ajustar modelo de regresión lineal simple
+modelo_simple <- lm(Selling_Price ~ Present_Price, data = autos)
+
+# Resumen del modelo
+summary(modelo_simple)
+```
+
+## Gráfico de dispersión con recta de regresión
+
+```{r grafico-simple}
+# Visualización del modelo simple
+ggplot(autos, aes(x = Present_Price, y = Selling_Price)) +
+  geom_point(color = "#4B2E83", alpha = 0.6, size = 2.5) +
+  geom_smooth(method = "lm", color = "#E87722", linewidth = 1.2, se = TRUE, fill = "#F5DFC0") +
+  labs(
+    title    = "Regresión Lineal Simple",
+    subtitle = "Selling_Price ~ Present_Price",
+    x        = "Precio Actual de Catálogo (lacs)",
+    y        = "Precio de Venta (lacs)",
+    caption  = "Dataset: CardEkho | Semana 9 — 92-0026"
+  ) 
+  
+```
+
+## Interpretación de los coeficientes
+
+```{r interpretacion-simple}
+# Extraer coeficientes
+coefs_simple <- coef(modelo_simple)
+
+cat("=== INTERPRETACIÓN — MODELO SIMPLE ===\n\n")
+cat(sprintf("Intercepto (β₀) : %.4f\n", coefs_simple[1]))
+cat(sprintf("Pendiente  (β₁) : %.4f\n\n", coefs_simple[2]))
+
+```
+
+<div class="box-reflexion">
+**🔍 Reflexión:** ¿El intercepto tiene sentido de negocio? ¿Un auto con precio de catálogo de 0 puede tener ese precio de venta? Discute con tu equipo.
+</div>
+
+---
+
+# Paso 3: Regresión Lineal Múltiple
+
+El modelo múltiple incorpora tres predictores seleccionados en la etapa de correlación.
+
+**Ecuación del modelo:**  
+$$\hat{Y} = \beta_0 + \beta_1 \cdot \text{Present Price} + \beta_2 \cdot \text{Year} + \beta_3 \cdot \text{Kms Driven}$$
+
+<div class="box-prompt">
+**💬 Prompt sugerido:**
+
+*"Ajusta en R un modelo de regresión lineal múltiple con lm() usando 'Selling_Price' como variable dependiente y 'Present_Price', 'Year' y 'Kms_Driven' como predictores del dataframe 'autos'. Muestra el summary() e interpreta: el R² ajustado, el p-valor global del modelo (F-statistic), y si cada predictor es estadísticamente significativo (p < 0.05)."*
+</div>
+
+## Ajuste del modelo múltiple
+
+```{r modelo-multiple}
+# Ajustar modelo de regresión lineal múltiple
+modelo_multiple <- lm(Selling_Price ~ Present_Price + Year + Kms_Driven, data = autos)
+
+# Resumen del modelo
+summary(modelo_multiple)
+```
+
+## Interpretación de coeficientes del modelo múltiple
+
+```{r interpretacion-multiple}
+# Extraer coeficientes
+coefs_mult <- coef(modelo_multiple)
+
+cat("=== INTERPRETACIÓN — MODELO MÚLTIPLE ===\n\n")
+cat(sprintf("Intercepto   (β₀) : %.2f\n",  coefs_mult[1]))
+cat(sprintf("Present_Price (β₁): %.4f\n",  coefs_mult[2]))
+cat(sprintf("Year          (β₂): %.4f\n",  coefs_mult[3]))
+cat(sprintf("Kms_Driven    (β₃): %.8f\n\n",coefs_mult[4]))
+
+```
+
+---
+
+# Paso 4: Evaluación y Comparación de Modelos
+
+<div class="box-instruccion">
+**Instrucción:** Compara ambos modelos usando R², R² ajustado y RMSE. El RMSE (Raíz del Error Cuadrático Medio) está en las mismas unidades que `Selling_Price` (lacs).
+</div>
+
+<div class="box-prompt">
+**💬 Prompt sugerido:**
+
+*"Tengo dos modelos en R llamados 'modelo_simple' y 'modelo_multiple'. Genera código para comparar su desempeño calculando: R², R² ajustado (del summary()), y RMSE usando la fórmula sqrt(mean(residuals()^2)). Presenta los resultados en una tabla con knitr::kable()."*
+</div>
+
+## Cálculo de métricas
+
+```{r metricas-comparacion}
+# Función para calcular métricas
+calcular_metricas <- function(modelo, nombre) {
+  s <- summary(modelo)
+  rmse <- sqrt(mean(residuals(modelo)^2))
+  data.frame(
+    Modelo        = nombre,
+    R2            = round(s$r.squared, 4),
+    R2_Ajustado   = round(s$adj.r.squared, 4),
+    RMSE          = round(rmse, 4),
+    F_statistic   = round(s$fstatistic[1], 2),
+    p_valor_global = format.pval(pf(s$fstatistic[1], s$fstatistic[2],
+                                    s$fstatistic[3], lower.tail = FALSE),
+                                 digits = 3, eps = 0.001)
+  )
+}
+
+# Tabla comparativa
+tabla_metricas <- bind_rows(
+  calcular_metricas(modelo_simple,   "Simple  (Present_Price)"),
+  calcular_metricas(modelo_multiple, "Múltiple (Present_Price + Year + Kms_Driven)")
+)
+
+knitr::kable(
+  tabla_metricas,
+  caption = "Tabla 1. Comparación de Modelos de Regresión Lineal",
+  align   = c("l","c","c","c","c","c"),
+  col.names = c("Modelo","R²","R² Ajustado","RMSE (lacs)","F-statistic","p-valor global")
+)
+```
+
+<div class="box-decision">
+**✅ ¿Cuál modelo es mejor?**  
+
+- Un **R² más alto** indica que el modelo explica más variación del precio.  
+- Un **RMSE más bajo** indica predicciones más precisas.  
+- El modelo múltiple generalmente mejora ambas métricas al incorporar más información relevante.
+</div>
+
+## Gráfico comparativo: valores reales vs. predichos
+
+```{r grafico-predichos, fig.height=6}
+# Preparar datos para comparar
+datos_comp <- autos %>%
+  mutate(
+    pred_simple   = predict(modelo_simple),
+    pred_multiple = predict(modelo_multiple)
+  )
+
+# Gráfico lado a lado
+p1 <- ggplot(datos_comp, aes(x = Selling_Price, y = pred_simple)) +
+  geom_point(color = "#4B2E83", alpha = 0.5, size = 2) +
+  geom_abline(intercept = 0, slope = 1, color = "#E87722", linewidth = 1.2, linetype = "dashed") +
+  labs(title = "Modelo Simple", x = "Precio Real (lacs)", y = "Precio Predicho (lacs)") +
+  theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(color = "#4B2E83", face = "bold"))
+
+p2 <- ggplot(datos_comp, aes(x = Selling_Price, y = pred_multiple)) +
+  geom_point(color = "#2E6B3E", alpha = 0.5, size = 2) +
+  geom_abline(intercept = 0, slope = 1, color = "#E87722", linewidth = 1.2, linetype = "dashed") +
+  labs(title = "Modelo Múltiple", x = "Precio Real (lacs)", y = "Precio Predicho (lacs)") +
+  theme_minimal(base_size = 11) +
+  theme(plot.title = element_text(color = "#2E6B3E", face = "bold"))
+
+# Mostrar lado a lado
+gridExtra::grid.arrange(p1, p2, ncol = 2,
+  top = grid::textGrob("Real vs. Predicho — Los puntos cercanos a la línea naranja indican mejor ajuste",
+                        gp = grid::gpar(fontsize = 12, col = "#555555")))
+```
+
+---
+
+# Paso 5: Predicción de un Dato Nuevo
+
+Ahora aplicamos el modelo para predecir el precio de un auto que **no está en el dataset**.
+
+<div class="box-instruccion">
+**Caso a predecir:**  
+Un automóvil con precio de catálogo actual de **12 lacs**, fabricado en **2016**, con **30,000 km** recorridos. ¿Cuál sería su precio estimado de venta?
+</div>
+
+<div class="box-prompt">
+**💬 Prompt sugerido:**
+
+*"Tengo un modelo de regresión múltiple en R llamado 'modelo_multiple'. Quiero predecir el Selling_Price de un auto nuevo con estos valores: Present_Price = 12, Year = 2016, Kms_Driven = 30000. Genera código usando predict() con un data.frame de nuevos datos y muestra el intervalo de confianza del 95% con interval='confidence'."*
+</div>
+
+```{r prediccion}
+# Definir el auto nuevo
+auto_nuevo <- data.frame(
+  Present_Price = 12,
+  Year          = 2016,
+  Kms_Driven    = 30000
+)
+
+# Predicción puntual + intervalos de confianza y predicción
+pred_confianza <- predict(modelo_multiple, newdata = auto_nuevo,
+                          interval = "confidence", level = 0.95)
+
+pred_prediccion <- predict(modelo_multiple, newdata = auto_nuevo,
+                           interval = "prediction", level = 0.95)
+
+cat(sprintf("Precio estimado de venta   : %.2f lacs              \n",
+            pred_confianza[1]))
+cat(sprintf("IC 95%% para la media       : [%.2f, %.2f]          \n",
+            pred_confianza[2], pred_confianza[3]))
+cat(sprintf("IP 95%% para una observación: [%.2f, %.2f]          \n",
+            pred_prediccion[2], pred_prediccion[3]))
+```
+
+<div class="box-reflexion">
+**🔍 ¿Cuál usar — Intervalo de Confianza o Intervalo de Predicción?**
+
+- El **IC 95%** es más estrecho: captura la incertidumbre sobre el **precio promedio** de todos los autos con esas características.  
+- El **IP 95%** es más amplio: captura la incertidumbre sobre el precio de **un auto específico** (incluye variación individual).  
+
+→ Para dar un rango de precio a un vendedor individual, el **intervalo de predicción** es más apropiado.
+</div>
+
+---
+
+# Paso 7: Uso del Modelo Simple para Comparar la Predicción
+
+```{r prediccion-simple}
+# Predicción con el modelo simple para el mismo auto
+pred_simple_nuevo <- predict(modelo_simple,
+                             newdata = data.frame(Present_Price = 12),
+                             interval = "prediction", level = 0.95)
+
+cat("=== Comparación de Predicciones ===\n\n")
+cat(sprintf("Modelo simple   → %.2f lacs  [IC: %.2f, %.2f]\n",
+            pred_simple_nuevo[1], pred_simple_nuevo[2], pred_simple_nuevo[3]))
+cat(sprintf("Modelo múltiple → %.2f lacs  [IC: %.2f, %.2f]\n",
+            pred_prediccion[1], pred_prediccion[2], pred_prediccion[3]))
+```
+
+---
+
+** Conclusiones del análisis:**
+
+1. **`Present_Price`** es el predictor más fuerte (r = 0.88), siendo la base del modelo simple.  
+2. El **modelo múltiple** mejora el R² incorporando `Year` (efecto positivo: autos más nuevos valen más) y `Kms_Driven` (efecto negativo: más uso → menor precio).  
+3. Los **gráficos diagnósticos** permiten detectar si los supuestos se cumplen; de no cumplirse, podría requerirse transformar variables (ej. log(Selling_Price)).  
+4. El **intervalo de predicción** del 95% es el rango adecuado para comunicarle a un vendedor el precio estimado de su vehículo.
+</div>
+
+
+
+---
+

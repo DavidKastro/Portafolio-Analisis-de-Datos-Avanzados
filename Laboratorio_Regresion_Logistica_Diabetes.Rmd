@@ -1,0 +1,459 @@
+---
+title: "Laboratorio: Regresión Logística"
+subtitle: "Predicción de Diabetes — Dataset PimaIndiansDiabetes"
+author: "Nombre del estudiante:"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    highlight: tango
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+---
+
+## Introducción
+
+En este laboratorio aplicarás un modelo de **Regresión Logística** para predecir si una
+paciente tiene diabetes, utilizando el dataset `PimaIndiansDiabetes` del paquete `mlbench`.
+
+Este dataset contiene información médica de mujeres de la comunidad Pima (Arizona, EE.UU.)
+y es ampliamente utilizado en estudios de machine learning aplicados a salud.
+
+**Objetivo:** Construir, evaluar e interpretar un modelo de regresión logística siguiendo
+el mismo flujo de trabajo visto en clase con el dataset de cáncer de mama.
+
+---
+
+## Parte 1 — Importaciones
+
+```{r librerias}
+library(mlbench)
+library(ggplot2)
+library(dplyr)
+library(corrplot)
+library(caret)
+library(pROC)
+library(glmnet)
+```
+
+---
+
+## Parte 2 — Carga y exploración inicial de datos
+
+```{r carga-datos}
+# Carga el dataset
+data("PimaIndiansDiabetes", package = "mlbench")
+
+# Asigna el dataset a un objeto llamado df
+df <- PimaIndiansDiabetes
+
+# Muestra las primeras 6 filas
+head(df, 6)
+
+# Estructura general
+str(df)
+cat("Filas:   ", nrow(df), "\n")
+cat("Columnas:", ncol(df), "\n")
+```
+
+El dataset contiene 768 observaciones y 9 variables: `pregnant`, `glucose`, `pressure`,
+`triceps`, `insulin`, `mass`, `pedigree`, `age` y la variable objetivo `diabetes`
+(factor con niveles `"neg"`/`"pos"`).
+
+---
+
+## Parte 3 — Análisis Exploratorio (EDA)
+
+### 3.1 Estadísticas descriptivas
+
+```{r estadisticas}
+summary(df)
+```
+
+**Pregunta 3.1 —** ¿Hay variables con valores mínimos de cero que podrían ser datos faltantes
+enmascarados? ¿Cuáles y por qué sospechas que son valores inválidos?
+
+> **Respuesta:** Sí. Las variables `glucose` (glucosa en sangre), `pressure` (presión
+> arterial diastólica), `triceps` (grosor del pliegue cutáneo del tríceps), `insulin`
+> (nivel de insulina en suero) y `mass` (índice de masa corporal, BMI) presentan un
+> mínimo de 0, lo cual es fisiológicamente imposible en una persona viva. Estos ceros
+> muy probablemente representan datos faltantes que fueron codificados como 0 en lugar
+> de `NA` al construir el dataset original. La única variable donde 0 es un valor
+> legítimo es `pregnant` (número de embarazos), ya que una mujer puede no haber estado
+> embarazada nunca.
+
+---
+
+### 3.2 Distribución de la variable objetivo
+
+```{r distribucion-target}
+ggplot(df, aes(x = diabetes, fill = diabetes)) +
+  geom_bar() +
+  scale_fill_manual(values = c("neg" = "#75E6DA", "pos" = "#05445E")) +
+  labs(
+    title = "Distribución del diagnóstico de diabetes",
+    x     = "Diagnóstico",
+    y     = "Conteo"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+**Pregunta 3.2 —** ¿El dataset está balanceado? ¿Qué porcentaje representa cada clase?
+Calcula los porcentajes con código.
+
+```{r porcentaje-clases}
+df |>
+  count(diabetes) |>
+  mutate(pct = round(n / sum(n) * 100, 1))
+```
+
+> **Respuesta:** El dataset **no** está perfectamente balanceado: la clase `neg`
+> representa aproximadamente el 65% de los casos y la clase `pos` el 35% restante.
+> Es un desbalance moderado (no extremo), pero conviene tenerlo en cuenta al evaluar
+> el modelo, ya que el accuracy por sí solo puede ser engañoso; por eso se complementan
+> los resultados con sensibilidad, especificidad y AUC-ROC.
+
+---
+
+### 3.3 Codificación de la variable objetivo y correlaciones
+
+```{r codificacion}
+# La variable diabetes es un factor ("pos"/"neg")
+# Conviértela a numérica: pos = 1, neg = 0
+df$diabetes <- ifelse(df$diabetes == "pos", 1L, 0L)
+
+# Calcula la matriz de correlación
+corr <- cor(df)
+```
+
+```{r heatmap, fig.width=10, fig.height=10}
+corrplot(corr, method = "color", type = "full",
+         col = rev(colorRampPalette(c("#05445E", "white", "#75E6DA"))(200)),
+         addCoef.col = "black", number.cex = 0.7,
+         tl.cex = 0.9, tl.col = "black",
+         title = "Mapa de Correlación — PimaIndiansDiabetes", mar = c(0,0,2,0))
+```
+
+**Pregunta 3.3 —** ¿Cuáles son las 3 variables con mayor correlación con `diabetes`?
+¿Tiene sentido clínico esa relación? Justifica.
+
+```{r top3-correlacion}
+sort(abs(corr["diabetes", -which(colnames(corr) == "diabetes")]), decreasing = TRUE)[1:3]
+```
+
+> **Respuesta:** Las tres variables con mayor correlación absoluta con `diabetes`
+> suelen ser `glucose`, `mass` (BMI) y `age` (confirma con el resultado del chunk
+> anterior). Tiene pleno sentido clínico: la glucosa en sangre es el marcador
+> diagnóstico directo de la diabetes tipo 2; un IMC elevado es uno de los principales
+> factores de riesgo modificables asociados a resistencia a la insulina; y la edad
+> se relaciona con el deterioro progresivo de la tolerancia a la glucosa. Este patrón
+> es consistente con la literatura médica sobre diabetes tipo 2.
+
+---
+
+## Parte 4 — Preprocesamiento
+
+### 4.1 Selección de features relevantes
+
+```{r seleccion-features}
+# Obtén la correlación absoluta de cada variable con "diabetes"
+cor_target <- abs(corr["diabetes", ])
+
+# Filtra las variables con correlación mayor a 0.1
+relevant_features <- names(cor_target[cor_target > 0.1])
+
+# Elimina "diabetes" de la lista de features
+relevant_features <- relevant_features[relevant_features != "diabetes"]
+
+# Imprime los features seleccionados
+print(relevant_features)
+```
+
+**Pregunta 4.1 —** ¿Cuántas variables quedaron seleccionadas? ¿Cambia el resultado si
+usas un umbral de 0.2 en lugar de 0.1? Pruébalo.
+
+```{r umbral-alternativo}
+relevant_features_02 <- names(cor_target[cor_target > 0.2])
+relevant_features_02 <- relevant_features_02[relevant_features_02 != "diabetes"]
+
+cat("Con umbral 0.1:", length(relevant_features), "variables ->", 
+    paste(relevant_features, collapse = ", "), "\n")
+cat("Con umbral 0.2:", length(relevant_features_02), "variables ->", 
+    paste(relevant_features_02, collapse = ", "), "\n")
+```
+
+> **Respuesta:** Con el umbral de 0.1 se seleccionan casi todas las variables del
+> dataset, ya que la mayoría tiene alguna correlación débil con `diabetes`. Al subir
+> el umbral a 0.2, la lista se reduce considerablemente y quedan solo las variables
+> con relación más fuerte (típicamente `glucose`, `mass`, `age` y `pregnant`).
+> Esto ilustra el trade-off entre incluir más información (umbral bajo, riesgo de
+> ruido/multicolinealidad) y quedarse solo con las señales más fuertes (umbral alto,
+> riesgo de perder información útil aunque débil).
+
+---
+
+### 4.2 Separar variables X e y
+
+```{r variables-xy}
+X <- df[, relevant_features]
+y <- df$diabetes
+```
+
+---
+
+### 4.3 División entrenamiento / prueba
+
+```{r train-test-split}
+set.seed(42)
+
+# Divide en 80% train y 20% test usando createDataPartition
+train_index <- createDataPartition(y, p = 0.8, list = FALSE)
+
+X_train <- X[train_index, ]
+X_test  <- X[-train_index, ]
+y_train <- y[train_index]
+y_test  <- y[-train_index]
+
+# Verifica las dimensiones de cada conjunto
+cat("Train:", nrow(X_train), "filas\n")
+cat("Test: ", nrow(X_test),  "filas\n")
+```
+
+---
+
+### 4.4 Escalado de datos
+
+```{r escalado}
+# Crea el escalador ajustado SOLO sobre X_train
+scaler <- preProcess(X_train, method = c("center", "scale"))
+
+# Transforma tanto X_train como X_test
+X_train <- predict(scaler, X_train)
+X_test  <- predict(scaler, X_test)
+```
+
+**Pregunta 4.4 —** ¿Por qué es importante ajustar el escalador solo con los datos de
+entrenamiento y no con todo el dataset?
+
+> **Respuesta:** Si el escalador se ajustara con todo el dataset (incluyendo el conjunto
+> de prueba), la media y desviación estándar usadas para escalar incorporarían
+> información del conjunto de test, lo cual constituye una fuga de datos (*data
+> leakage*). Esto haría que el modelo "vea" indirectamente información sobre los
+> datos de prueba antes de la evaluación, generando una estimación optimista y poco
+> realista de su desempeño en producción. Ajustando el escalador solo con `X_train`,
+> el conjunto de prueba se transforma como si fueran datos verdaderamente nuevos,
+> simulando el escenario real de despliegue.
+
+---
+
+## Parte 5 — Modelo de Regresión Logística
+
+### 5.1 Entrenamiento con glmnet (Ridge)
+
+```{r entrenamiento}
+# Entrena el modelo con regularización Ridge (alpha = 0)
+model <- glmnet(x      = as.matrix(X_train),
+                y      = y_train,
+                family = "binomial",
+                alpha  = 0,
+                lambda = 0.01)
+
+# Muestra los coeficientes
+coef(model)
+```
+
+**Pregunta 5.1 —** ¿Por qué usamos regularización Ridge en lugar de `glm()` directamente?
+¿Qué problema resuelve?
+
+> **Respuesta:** La regularización Ridge (L2) añade una penalización proporcional al
+> cuadrado de los coeficientes, lo que reduce su magnitud sin llevarlos exactamente a
+> cero. Esto ayuda a controlar la multicolinealidad entre variables predictoras (varias
+> mediciones antropométricas y metabólicas del dataset están correlacionadas entre sí)
+> y reduce el sobreajuste, produciendo un modelo más estable y con mejor capacidad de
+> generalización que una regresión logística sin regularizar (`glm()`), especialmente
+> cuando hay variables correlacionadas o un tamaño de muestra moderado como en este caso.
+
+---
+
+### 5.2 Predicciones
+
+```{r predicciones}
+# Genera las probabilidades predichas sobre el conjunto de prueba
+probs <- predict(model, newx = as.matrix(X_test), type = "response")
+
+# Convierte probabilidades a clases binarias con umbral 0.5
+predictions <- ifelse(probs >= 0.5, 1L, 0L)
+```
+
+---
+
+## Parte 6 — Evaluación del Modelo
+
+### 6.1 Matriz de Confusión
+
+```{r matriz-confusion}
+cm <- confusionMatrix(factor(predictions), factor(y_test), positive = "1")
+
+print("Matriz de Confusión:")
+print(cm$table)
+```
+
+```{r visualizacion-cm}
+cm_df <- as.data.frame(cm$table)
+colnames(cm_df) <- c("Predicho", "Real", "Freq")
+
+ggplot(cm_df, aes(x = Real, y = Predicho, fill = Freq)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Freq), size = 7, fontface = "bold") +
+  scale_fill_gradient(low = "#D6EAF8", high = "#05445E") +
+  labs(title = "Matriz de Confusión — Diabetes",
+       x = "Valor Real", y = "Valor Predicho") +
+  theme_minimal()
+```
+
+**Pregunta 6.1 —** Identifica los valores de TN, FP, FN y TP en tu matriz de confusión
+y explica qué significa cada uno en el contexto de diagnóstico de diabetes.
+
+> **Respuesta:** *(reemplaza los valores por los que obtengas al correr el chunk `cm$table`)*
+>
+> - **TN =** *(valor de `cm$table[1,1]`)*: pacientes sin diabetes correctamente
+>   clasificadas como negativas.
+> - **FP =** *(valor de `cm$table[2,1]`)*: pacientes sin diabetes que el modelo
+>   clasificó erróneamente como positivas (falsa alarma).
+> - **FN =** *(valor de `cm$table[1,2]`)*: pacientes con diabetes que el modelo
+>   clasificó erróneamente como negativas (caso no detectado).
+> - **TP =** *(valor de `cm$table[2,2]`)*: pacientes con diabetes correctamente
+>   identificadas por el modelo.
+
+**Pregunta 6.2 —** En el contexto médico de esta predicción, ¿cuál tipo de error (FP o FN)
+es más costoso? Justifica desde una perspectiva clínica.
+
+> **Respuesta:** El error más costoso suele ser el **falso negativo (FN)**: una paciente
+> que en realidad tiene diabetes pero es clasificada como sana no recibirá tratamiento
+> ni seguimiento oportuno, lo que puede derivar en complicaciones graves a largo plazo
+> (daño renal, cardiovascular, retinopatía, etc.). Un falso positivo (FP), en cambio,
+> generalmente implica solo la molestia y el costo de pruebas diagnósticas adicionales
+> de confirmación. Por eso, en un modelo de tamizaje clínico se prioriza maximizar el
+> **recall** (sensibilidad) de la clase positiva, incluso a costa de algo de precisión.
+
+---
+
+### 6.2 Métricas de desempeño
+
+```{r metricas}
+accuracy <- cm$overall["Accuracy"]
+report   <- cm$byClass
+
+cat(sprintf("Accuracy del modelo: %.4f\n", accuracy))
+cat("\nReporte de Clasificación:\n")
+print(report)
+```
+
+**Pregunta 6.3 —** Completa la siguiente tabla con los valores obtenidos:
+
+| Métrica | Clase 0 (Negativo) | Clase 1 (Positivo) |
+|---|---|---|
+| Precision | *(1 - report["Neg Pred Value"], o calcula directamente)* | `report["Precision"]` |
+| Recall (Sensibilidad) | `report["Specificity"]` | `report["Sensitivity"]` |
+| F1-Score | *(calcula con `caret` para clase 0 si se requiere)* | `report["F1"]` |
+
+**Pregunta 6.4 —** El recall de la clase positiva (diabetes = 1) es especialmente importante
+en este problema. ¿Por qué? ¿Cómo se compara con el recall obtenido en el modelo de cáncer
+de mama visto en clase?
+
+> **Respuesta:** El recall de la clase positiva mide qué proporción de las pacientes que
+> realmente tienen diabetes fue correctamente identificada por el modelo; es la métrica
+> clave en tamizaje médico porque un recall bajo implica dejar pasar casos reales de
+> enfermedad sin diagnosticar. Comparado con el modelo de cáncer de mama (que alcanzó una
+> sensibilidad de 0.95 y un AUC de 0.9971), es esperable que el recall en este dataset de
+> diabetes sea más bajo, ya que `PimaIndiansDiabetes` tiene variables más ruidosas, mayor
+> superposición entre clases y una relación menos determinística entre predictores y
+> diagnóstico que las variables morfológicas del dataset de cáncer de mama.
+
+---
+
+## Parte 7 — Curva ROC y AUC
+
+```{r roc-auc}
+roc_obj <- roc(y_test, as.vector(probs), quiet = TRUE)
+roc_auc <- auc(roc_obj)
+cat(sprintf("ROC-AUC: %.4f\n", roc_auc))
+```
+
+```{r grafico-roc}
+roc_df <- data.frame(
+  fpr = 1 - roc_obj$specificities,
+  tpr = roc_obj$sensitivities
+)
+
+ggplot(roc_df, aes(x = fpr, y = tpr)) +
+  geom_line(color = "#05445E", linewidth = 1.2) +
+  geom_abline(linetype = "dashed", color = "gray60") +
+  labs(
+    title    = "Curva ROC — Predicción de Diabetes",
+    subtitle = sprintf("AUC = %.4f", roc_auc),
+    x        = "False Positive Rate (1 - Especificidad)",
+    y        = "True Positive Rate (Sensibilidad)"
+  ) +
+  theme_minimal()
+```
+
+**Pregunta 7.1 —** Usando la tabla de interpretación del AUC, ¿cómo calificarías el
+desempeño discriminativo de tu modelo?
+
+| AUC | Interpretación |
+|---|---|
+| 0.5 | No discrimina (azar) |
+| 0.6 – 0.7 | Discriminación pobre |
+| 0.7 – 0.8 | Aceptable |
+| 0.8 – 0.9 | Buena |
+| > 0.9 | Excelente |
+
+> **Respuesta:** *(ubica tu valor de `roc_auc` en la tabla; en este dataset es común
+> obtener un AUC en el rango de "Aceptable" a "Buena", aproximadamente entre 0.75 y 0.85)*.
+
+**Pregunta 7.2 —** Compara el AUC de tu modelo con el obtenido en el dataset de cáncer
+de mama (0.9971). ¿Por qué crees que hay diferencia? ¿Qué características del dataset
+influyen en esto?
+
+> **Respuesta:** El AUC del modelo de diabetes es notablemente menor que el 0.9971
+> obtenido en cáncer de mama. Esto se explica porque el dataset de cáncer de mama usa
+> mediciones morfológicas precisas y muy discriminantes (tamaño, textura y forma del
+> núcleo celular), obtenidas directamente de imágenes digitalizadas, con una separación
+> casi perfecta entre clases benignas y malignas. En cambio, `PimaIndiansDiabetes`
+> contiene variables clínicas y metabólicas (glucosa, presión, IMC, pedigrí genético)
+> con mayor variabilidad individual, valores faltantes enmascarados como ceros, y una
+> relación biológica más compleja y multifactorial con la enfermedad, lo que reduce la
+> capacidad discriminativa del modelo.
+
+---
+
+## Parte 8 — Análisis Final
+
+**Pregunta 8.1 —** Reflexión final. Resume en 5-7 oraciones los hallazgos más importantes
+de este análisis: el desempeño del modelo, sus limitaciones y qué mejorarías si tuvieras
+que llevarlo a producción en un entorno clínico real.
+
+> **Respuesta:** El modelo de regresión logística con regularización Ridge logró un
+> desempeño aceptable-bueno para predecir diabetes tipo 2 a partir de variables clínicas
+> básicas, siendo `glucose`, `mass` y `age` los predictores más relevantes, en línea con
+> el conocimiento médico establecido. Sin embargo, el desempeño es considerablemente
+> inferior al obtenido en el dataset de cáncer de mama, reflejando la mayor complejidad
+> y ruido inherentes a los datos clínicos de diabetes. Una limitación importante es la
+> presencia de valores cero fisiológicamente imposibles en variables como `glucose`,
+> `pressure` e `insulin`, que probablemente representan datos faltantes no tratados en
+> este análisis y que podrían estar sesgando el modelo. Antes de llevar este modelo a
+> producción en un entorno clínico real, sería necesario imputar correctamente esos
+> valores faltantes, explorar modelos no lineales o de ensamble (Random Forest, XGBoost)
+> para capturar interacciones entre variables, ajustar el umbral de decisión para
+> priorizar el recall de la clase positiva dado el alto costo clínico de los falsos
+> negativos, y validar el modelo en poblaciones más diversas, ya que el dataset original
+> proviene de un grupo étnico y demográfico específico.

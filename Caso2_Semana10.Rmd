@@ -1,0 +1,766 @@
+---
+title: 'Caso de Estudio #2 – Inferencia Estadística para la Toma de Decisiones Empresariales'
+author: 'Grupo 4: Mateo Ruiz Herbas, Joshua Rojas Araya, Emilio Arguedas Alpízar y
+  David Castro González'
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: false
+    code_folding: show
+  pdf_document:
+    toc: true
+    toc_depth: '3'
+subtitle: Análisis bivariado y pruebas de hipótesis | Mercado automotor indio
+---
+
+```{css, echo=FALSE}
+/* ── Identidad visual del curso ── */
+:root {
+  --purple: #4B2E83;
+  --orange: #E87722;
+  --green:  #2E6B3E;
+}
+
+body { font-family: 'Segoe UI', sans-serif; font-size: 15px; color: #222; }
+h1, h2, h3 { color: var(--purple); }
+.tocify-header { font-weight: bold; }
+
+/* Cajas de colores */
+.box-instruccion {
+  background: #EDE7F6; border-left: 5px solid var(--purple);
+  padding: 12px 16px; border-radius: 4px; margin: 12px 0;
+}
+.box-reflexion {
+  background: #FFF3E0; border-left: 5px solid var(--orange);
+  padding: 12px 16px; border-radius: 4px; margin: 12px 0;
+}
+.box-decision {
+  background: #E8F5E9; border-left: 5px solid var(--green);
+  padding: 12px 16px; border-radius: 4px; margin: 12px 0;
+}
+.box-alerta {
+  background: #FFFDE7; border-left: 5px solid #F9A825;
+  padding: 12px 16px; border-radius: 4px; margin: 12px 0;
+}
+.box-ejercicio {
+  background: #E3F2FD; border-left: 5px solid #1565C0;
+  padding: 12px 16px; border-radius: 4px; margin: 12px 0;
+}
+
+/* Encabezado de sección */
+.section-header {
+  background: var(--purple); color: white;
+  padding: 8px 16px; border-radius: 4px;
+  font-weight: bold; font-size: 16px; margin: 24px 0 12px 0;
+}
+```
+
+---
+
+<div class="section-header"> Información general del caso</div>
+
+| Campo | Detalle |
+|---|---|
+| **Curso** | 92-0026 – Análisis de Datos Avanzado para Negocios |
+| **Semana** | 10 |
+| **Peso en la nota final** | 10% |
+| **Modalidad** | Grupal |
+| **Dataset** | CAR DETAILS FROM CAR DEKHO.csv |
+| **Herramienta** | R / RStudio / Posit Cloud |
+
+<div class="box-instruccion">
+**Instrucción general:** Aplica las cinco técnicas indicadas en este documento sobre el dataset del mercado automotor indio. Para cada técnica: ejecuta el análisis, incluye al menos una visualización y escribe una interpretación orientada a decisiones de negocio. Documenta el uso del LLM en la tabla de la Sección 9.
+</div>
+
+---
+
+## 1. Carga de librerías
+
+```{r librerias, message=FALSE, warning=FALSE}
+library(tidyverse)   # manipulación y visualización
+library(broom)       # tablas ordenadas de modelos y pruebas
+library(car)         # diagnósticos: vif, leveneTest y avPlots
+
+# Evita que R muestre números grandes en notación científica cuando no es necesario.
+options(scipen = 999)
+
+# Tema general para los gráficos.
+theme_set(theme_minimal(base_size = 12))
+
+# Funciones sencillas para mostrar los resultados dentro del texto.
+fmt_num <- function(x, digits = 0) {
+  format(
+    round(x, digits),
+    big.mark = ",",
+    scientific = FALSE,
+    trim = TRUE,
+    nsmall = digits
+  )
+}
+
+fmt_p <- function(x) {
+  ifelse(
+    is.na(x),
+    "NA",
+    ifelse(x < 0.001, "< 0.001", format(round(x, 3), nsmall = 3))
+  )
+}
+```
+
+---
+
+## 2. Carga y exploración inicial del dataset
+
+```{r carga-datos}
+# Se lee el archivo desde la misma carpeta donde se encuentra el .Rmd.
+# De esta manera se evita utilizar una ruta absoluta y el reporte es reproducible.
+car_data_original <- read_csv(
+  "CAR DETAILS FROM CAR DEKHO.csv",
+  show_col_types = FALSE
+)
+
+# Se crea una copia de trabajo para conservar intactos los datos originales.
+car_data <- car_data_original
+
+# Vista rápida de la estructura y resumen de las variables.
+glimpse(car_data)
+summary(car_data)
+```
+
+<div class="box-alerta">
+**Alerta:** El dataset puede contener valores atípicos extremos en `selling_price` y `km_driven`. Documenta cualquier filtro que apliques en la siguiente sección y justifica la decisión.
+</div>
+
+---
+
+## 3. Limpieza de datos
+
+<div class="box-instruccion">
+**Instrucción:** Realiza una limpieza básica: elimina duplicados, gestiona valores faltantes y aplica filtros justificados si encuentras valores incoherentes (p. ej. precios de 0 o kilometrajes imposibles). Documenta cada decisión con un comentario en el código.
+</div>
+
+```{r limpieza, fig.width=8, fig.height=4.5}
+# ── Diagnóstico inicial ─────────────────────────────────────────────────────────
+registros_iniciales <- nrow(car_data)
+duplicados_detectados <- sum(duplicated(car_data))
+
+na_variables_clave <- car_data %>%
+  summarise(
+    across(
+      c(selling_price, km_driven, year, fuel, transmission),
+      ~ sum(is.na(.x))
+    )
+  )
+
+cat("Registros iniciales:", registros_iniciales, "\n")
+cat("Duplicados exactos:", duplicados_detectados, "\n")
+na_variables_clave
+
+# Se revisan los rangos antes de aplicar cualquier filtro.
+car_data %>%
+  select(selling_price, km_driven, year) %>%
+  summary()
+
+# Visualización inicial de las variables que presentan mayor asimetría.
+ggplot(car_data, aes(x = selling_price)) +
+  geom_histogram(bins = 50, fill = "steelblue", color = "white") +
+  labs(
+    title = "Distribución del precio antes de la limpieza",
+    x = "Precio de venta (rupias)",
+    y = "Frecuencia"
+  )
+
+ggplot(car_data, aes(x = km_driven)) +
+  geom_histogram(bins = 50, fill = "darkorange", color = "white") +
+  labs(
+    title = "Distribución del kilometraje antes de la limpieza",
+    x = "Kilometraje recorrido",
+    y = "Frecuencia"
+  )
+
+# ── Limpieza ────────────────────────────────────────────────────────────────────
+car_data <- car_data %>%
+  # Los duplicados exactos pueden dar un peso artificial a algunos vehículos.
+  distinct() %>%
+  # Se eliminan filas incompletas solamente en las variables necesarias.
+  drop_na(selling_price, km_driven, year, fuel, transmission) %>%
+  # Los precios iguales o menores que cero no representan una venta válida.
+  dplyr::filter(selling_price > 0) %>%
+  # Se conserva el kilometraje positivo y se eliminan casos aislados por encima
+  # de 500,000 km porque distorsionan fuertemente la escala del análisis.
+  dplyr::filter(km_driven >= 0, km_driven <= 500000)
+
+# No se eliminaron los precios altos solamente por ser atípicos, porque pueden
+# corresponder a automóviles de lujo y no hay evidencia de que sean errores.
+
+# ── Resultado de la limpieza ────────────────────────────────────────────────────
+registros_finales <- nrow(car_data)
+filas_eliminadas <- registros_iniciales - registros_finales
+porcentaje_eliminado <- filas_eliminadas / registros_iniciales
+
+resumen_limpieza <- tibble(
+  indicador = c(
+    "Registros iniciales",
+    "Duplicados exactos detectados",
+    "Registros finales",
+    "Filas eliminadas",
+    "Porcentaje eliminado"
+  ),
+  resultado = c(
+    fmt_num(registros_iniciales),
+    fmt_num(duplicados_detectados),
+    fmt_num(registros_finales),
+    fmt_num(filas_eliminadas),
+    paste0(round(porcentaje_eliminado * 100, 1), "%")
+  )
+)
+
+knitr::kable(resumen_limpieza, align = c("l", "r"))
+
+# Confirmación final de valores ausentes.
+colSums(is.na(car_data))
+```
+
+<div class="box-reflexion">
+**Reflexión:** ¿Cuántas filas se eliminaron en el proceso de limpieza? ¿Podría ese porcentaje afectar la representatividad del análisis? Escribe tu respuesta aquí.
+
+Se eliminaron `r fmt_num(filas_eliminadas)` filas, lo que representa aproximadamente `r round(porcentaje_eliminado * 100, 1)`% del total original. La mayor parte de esta reducción corresponde a `r fmt_num(duplicados_detectados)` registros duplicados exactos y también se retiraron dos observaciones únicas con un kilometraje superior a 500,000 km. El porcentaje es importante y por eso debe reconocerse como una limitación, aunque eliminar duplicados evita que ciertos vehículos tengan más peso del que realmente les corresponde. Los precios elevados se conservaron porque pueden pertenecer a vehículos de lujo y no se encontró evidencia suficiente para tratarlos como errores.
+</div>
+
+---
+
+## 4. Técnica 1 – Correlación entre variables numéricas
+
+<div class="box-ejercicio">
+**Ejercicio:** Calcula y visualiza la matriz de correlación entre `selling_price`, `year` y `km_driven`. Usa el siguiente prompt en Claude o ChatGPT, pega el código generado en el chunk de abajo y ejecútalo.
+</div>
+
+> **Prompt para el LLM:**
+> *"Actúa como un experto en estadística y análisis de datos en R. Tengo un dataset llamado `car_data` con las variables: `selling_price` (precio numérico), `km_driven` (kilometraje numérico) y `year` (año numérico). Necesito el código R completo para: (1) calcular la matriz de correlación entre estas tres variables con `cor(use = 'complete.obs')`; (2) visualizarla con `corrplot` o `ggplot2`; y (3) imprimir los valores en una tabla legible. Usa solo tidyverse, corrplot o ggplot2. Incluye comentarios en cada paso."*
+
+```{r correlacion, fig.width=8, fig.height=5}
+# Se seleccionan las tres variables numéricas solicitadas.
+variables_correlacion <- car_data %>%
+  select(selling_price, year, km_driven)
+
+# Matriz de correlación de Pearson.
+matriz_cor <- cor(variables_correlacion, use = "complete.obs")
+
+# Tabla legible de los coeficientes.
+tabla_cor <- matriz_cor %>%
+  as.data.frame() %>%
+  rownames_to_column("variable")
+
+knitr::kable(tabla_cor, digits = 3, align = "c")
+
+# La matriz se transforma a formato largo para visualizarla con ggplot2.
+cor_long <- matriz_cor %>%
+  as.data.frame() %>%
+  rownames_to_column("variable_1") %>%
+  pivot_longer(
+    cols = -variable_1,
+    names_to = "variable_2",
+    values_to = "correlacion"
+  )
+
+ggplot(cor_long, aes(x = variable_1, y = variable_2, fill = correlacion)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(correlacion, 3)), size = 4) +
+  scale_fill_gradient2(
+    low = "firebrick3",
+    mid = "white",
+    high = "steelblue4",
+    midpoint = 0,
+    limits = c(-1, 1)
+  ) +
+  labs(
+    title = "Matriz de correlación",
+    x = NULL,
+    y = NULL,
+    fill = "Correlación"
+  ) +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+# Gráfico complementario de la relación entre kilometraje y precio.
+ggplot(car_data, aes(x = km_driven, y = selling_price)) +
+  geom_point(alpha = 0.30, color = "steelblue") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(
+    title = "Relación entre kilometraje y precio de venta",
+    x = "Kilometraje recorrido (km)",
+    y = "Precio de venta (rupias)"
+  )
+
+# Valores que se utilizarán en la interpretación.
+cor_precio_anio <- matriz_cor["selling_price", "year"]
+cor_precio_km <- matriz_cor["selling_price", "km_driven"]
+cor_anio_km <- matriz_cor["year", "km_driven"]
+```
+
+<div class="box-reflexion">
+**Interpretación:**
+
+- ¿Qué variables muestran correlación fuerte o moderada con `selling_price`?
+- ¿Se observa correlación negativa entre `km_driven` y el precio? ¿Tiene sentido desde la perspectiva del mercado?
+- ¿A mayor antigüedad del vehículo (menor `year`), disminuye el precio?
+- ¿Hay correlaciones cercanas a 0?
+
+La relación más importante con `selling_price` es la del año del vehículo, con una correlación de `r round(cor_precio_anio, 3)`, la cual se puede considerar positiva moderada. Esto indica que los vehículos más recientes tienden a mostrar precios más altos. La correlación entre kilometraje y precio es de `r round(cor_precio_km, 3)`, por lo que es negativa pero débil. El signo tiene lógica de mercado porque un vehículo con mayor recorrido normalmente presenta más uso y desgaste, aunque el valor bajo demuestra que el kilometraje por sí solo no explica completamente el precio.
+
+La correlación positiva entre `year` y `selling_price` también implica que a mayor antigüedad el precio tiende a disminuir. La correlación no permite indicar por sí sola cuánto disminuye en rupias; esa magnitud se estima en la regresión múltiple y en este caso corresponde aproximadamente a 50,118 rupias por cada año más reciente, manteniendo constante el kilometraje. La relación más cercana a cero es la del precio con el kilometraje (`r round(cor_precio_km, 3)`), lo cual muestra una asociación lineal débil, pero no permite afirmar que exista independencia total. Por otra parte, `year` y `km_driven` presentan una correlación de `r round(cor_anio_km, 3)`, por lo que los vehículos más antiguos tienden a acumular más kilometraje.
+</div>
+
+---
+
+## 5. Técnica 2 – Regresión lineal simple
+
+<div class="box-ejercicio">
+**Ejercicio:** Construye un modelo de regresión lineal simple: `selling_price ~ km_driven`. Si observas asimetría fuerte, evalúa una transformación logarítmica. Usa el siguiente prompt y documenta el proceso.
+</div>
+
+> **Prompt para el LLM:**
+> *"Actúa como un experto en estadística en R. Tengo un dataset `car_data` con las variables `selling_price` y `km_driven`. Necesito el código R para: (1) ajustar un modelo de regresión lineal simple `selling_price ~ km_driven` con `lm()`; (2) imprimir el resumen con `summary()` y una tabla ordenada con `broom::tidy()` y `broom::glance()`; (3) graficar el scatter con la recta de regresión usando `geom_smooth(method = 'lm')` en ggplot2; y (4) verificar supuestos básicos con `plot(modelo)`. Incluye comentarios en cada paso."*
+
+```{r regresion-simple, fig.width=8, fig.height=5}
+# Distribución del precio. Se observa una cola derecha pronunciada.
+ggplot(car_data, aes(x = selling_price)) +
+  geom_histogram(bins = 50, fill = "steelblue", color = "white") +
+  labs(
+    title = "Distribución del precio de venta",
+    x = "Precio de venta (rupias)",
+    y = "Frecuencia"
+  )
+
+# Modelo lineal simple solicitado.
+modelo_simple <- lm(selling_price ~ km_driven, data = car_data)
+
+# Resultados del modelo en tablas ordenadas.
+tabla_simple <- tidy(modelo_simple, conf.int = TRUE)
+metricas_simple <- glance(modelo_simple)
+
+knitr::kable(tabla_simple, digits = 4, align = "c")
+knitr::kable(
+  metricas_simple %>%
+    select(r.squared, adj.r.squared, sigma, statistic, p.value, AIC, BIC),
+  digits = 4,
+  align = "c"
+)
+
+# Diagrama de dispersión con la recta de regresión.
+ggplot(car_data, aes(x = km_driven, y = selling_price)) +
+  geom_point(alpha = 0.30, color = "steelblue") +
+  geom_smooth(method = "lm", se = TRUE, color = "firebrick") +
+  labs(
+    title = "Regresión lineal simple: precio según kilometraje",
+    x = "Kilometraje recorrido (km)",
+    y = "Precio de venta (rupias)"
+  )
+
+# Diagnósticos básicos del modelo en escala original.
+par(mfrow = c(2, 2))
+plot(modelo_simple)
+par(mfrow = c(1, 1))
+
+# Debido a la asimetría del precio también se explora un modelo logarítmico.
+modelo_log_simple <- lm(log(selling_price) ~ km_driven, data = car_data)
+
+comparacion_transformacion <- bind_rows(
+  glance(modelo_simple) %>%
+    mutate(modelo = "Precio en escala original"),
+  glance(modelo_log_simple) %>%
+    mutate(modelo = "Logaritmo del precio")
+) %>%
+  select(modelo, r.squared, adj.r.squared, sigma, AIC)
+
+knitr::kable(comparacion_transformacion, digits = 4, align = "c")
+
+# Valores utilizados en la interpretación.
+beta_0_simple <- coef(modelo_simple)["(Intercept)"]
+beta_km_simple <- coef(modelo_simple)["km_driven"]
+p_km_simple <- tabla_simple$p.value[tabla_simple$term == "km_driven"]
+r2_simple <- metricas_simple$r.squared
+r2_ajustado_simple <- metricas_simple$adj.r.squared
+```
+
+<div class="box-reflexion">
+**Interpretación:**
+
+- ¿Es `km_driven` un predictor significativo? (valor p)
+- ¿El signo del coeficiente es coherente con la depreciación por uso?
+- ¿Qué porcentaje de la variabilidad del precio explica este modelo (R²)?
+- Escribe la ecuación de regresión e interprétala en términos de mercado.
+
+El kilometraje es un predictor estadísticamente significativo porque su valor p es `r fmt_p(p_km_simple)`. El coeficiente estimado es de `r fmt_num(beta_km_simple, 2)` rupias por kilómetro, por lo que el signo negativo coincide con la depreciación esperada por el uso. Expresado de una forma más práctica, por cada 10,000 kilómetros adicionales el precio esperado disminuye aproximadamente `r fmt_num(abs(beta_km_simple) * 10000)` rupias. Esta interpretación representa una relación promedio y no controla otras características como el año, la marca o el tipo de combustible.
+
+La ecuación estimada es: **Precio = `r fmt_num(beta_0_simple, 2)` + (`r fmt_num(beta_km_simple, 2)` × kilometraje)**. El R² es de `r round(r2_simple * 100, 2)`%, de modo que el kilometraje por sí solo explica una parte pequeña de la variabilidad del precio. El resultado puede ser estadísticamente significativo por el tamaño de la muestra y aun así tener una capacidad predictiva limitada. Los gráficos de diagnóstico también muestran asimetría y varianza desigual en los residuos, por lo que se exploró una transformación logarítmica. El modelo logarítmico ayuda a reducir parte de la asimetría, aunque su R² no debe compararse de manera directa con el modelo original porque la variable dependiente está medida en otra escala.
+</div>
+
+---
+
+## 6. Técnica 3 – Regresión lineal múltiple
+
+<div class="box-ejercicio">
+**Ejercicio:** Extiende el modelo anterior incluyendo `year` como predictor adicional: `selling_price ~ km_driven + year`. Evalúa si la mejora del R² ajustado justifica el modelo más complejo.
+</div>
+
+> **Prompt para el LLM:**
+> *"Actúa como un experto en estadística en R. Tengo un dataset `car_data` con variables `selling_price`, `km_driven` y `year`. Necesito el código R para: (1) ajustar una regresión lineal múltiple `selling_price ~ km_driven + year`; (2) comparar R² y R² ajustado con el modelo simple anterior usando `broom::glance()`; (3) calcular el VIF para detectar multicolinealidad con `car::vif()`; y (4) graficar los efectos parciales de cada predictor. Incluye comentarios en cada paso."*
+
+```{r regresion-multiple, fig.width=8, fig.height=5}
+# Modelo múltiple base solicitado.
+modelo_multiple <- lm(
+  selling_price ~ km_driven + year,
+  data = car_data
+)
+
+# Coeficientes y métricas del modelo.
+tabla_multiple <- tidy(modelo_multiple, conf.int = TRUE)
+metricas_multiple <- glance(modelo_multiple)
+
+knitr::kable(tabla_multiple, digits = 4, align = "c")
+knitr::kable(
+  metricas_multiple %>%
+    select(r.squared, adj.r.squared, sigma, statistic, p.value, AIC, BIC),
+  digits = 4,
+  align = "c"
+)
+
+# Comparación entre el modelo simple y el modelo múltiple.
+comparacion_modelos <- bind_rows(
+  metricas_simple %>% mutate(modelo = "Simple: precio ~ kilometraje"),
+  metricas_multiple %>% mutate(modelo = "Múltiple: precio ~ kilometraje + año")
+) %>%
+  select(modelo, r.squared, adj.r.squared, sigma, statistic, p.value, AIC)
+
+knitr::kable(comparacion_modelos, digits = 4, align = "c")
+
+# Prueba F de modelos anidados para evaluar el aporte de year.
+comparacion_anidada <- anova(modelo_simple, modelo_multiple)
+comparacion_anidada
+
+# Diagnóstico de multicolinealidad.
+vif_multiple <- car::vif(modelo_multiple)
+knitr::kable(
+  tibble(
+    predictor = names(vif_multiple),
+    VIF = as.numeric(vif_multiple)
+  ),
+  digits = 3,
+  align = "c"
+)
+
+# Efectos parciales de los dos predictores.
+car::avPlots(
+  modelo_multiple,
+  main = "Efectos parciales de kilometraje y año"
+)
+
+# Precio observado frente al precio predicho.
+car_data %>%
+  mutate(precio_predicho = predict(modelo_multiple)) %>%
+  ggplot(aes(x = precio_predicho, y = selling_price)) +
+  geom_point(alpha = 0.30, color = "steelblue") +
+  geom_abline(slope = 1, intercept = 0, color = "firebrick", linetype = "dashed") +
+  labs(
+    title = "Precio observado frente a precio predicho",
+    x = "Precio predicho (rupias)",
+    y = "Precio observado (rupias)"
+  )
+
+# Diagnóstico de supuestos del modelo múltiple.
+par(mfrow = c(2, 2))
+plot(modelo_multiple)
+par(mfrow = c(1, 1))
+
+# Exploración adicional justificada por la fuerte asimetría del precio.
+modelo_log_multiple <- lm(
+  log(selling_price) ~ km_driven + year,
+  data = car_data
+)
+
+# Se agregan atributos que tienen sentido de mercado para revisar cuánto mejora
+# el análisis cuando se comparan vehículos con características más similares.
+modelo_extendido <- lm(
+  log(selling_price) ~ km_driven + year + transmission + fuel + seller_type,
+  data = car_data
+)
+
+comparacion_alternativos <- bind_rows(
+  glance(modelo_log_multiple) %>%
+    mutate(modelo = "Log(precio) ~ kilometraje + año"),
+  glance(modelo_extendido) %>%
+    mutate(modelo = "Log(precio) ~ kilometraje + año + atributos")
+) %>%
+  select(modelo, r.squared, adj.r.squared, sigma, AIC)
+
+knitr::kable(comparacion_alternativos, digits = 4, align = "c")
+
+# Coeficientes del modelo extendido para revisar los signos y la significancia.
+knitr::kable(tidy(modelo_extendido, conf.int = TRUE), digits = 4, align = "c")
+
+# Valores utilizados en la interpretación.
+beta_km_multiple <- coef(modelo_multiple)["km_driven"]
+beta_year_multiple <- coef(modelo_multiple)["year"]
+p_km_multiple <- tabla_multiple$p.value[tabla_multiple$term == "km_driven"]
+p_year_multiple <- tabla_multiple$p.value[tabla_multiple$term == "year"]
+p_global_multiple <- metricas_multiple$p.value
+r2_ajustado_multiple <- metricas_multiple$adj.r.squared
+vif_maximo <- max(vif_multiple)
+r2_ajustado_extendido <- glance(modelo_extendido)$adj.r.squared
+```
+
+<div class="box-reflexion">
+**Interpretación:**
+
+- ¿Son `km_driven` y `year` significativos conjuntamente?
+- ¿Mejoró el R² ajustado respecto al modelo simple?
+- ¿Los signos de los coeficientes son coherentes con la lógica de mercado?
+- ¿Existe multicolinealidad problemática? (VIF > 5 es señal de alerta)
+
+El modelo es significativo en conjunto porque la prueba F global presenta un valor p de `r fmt_p(p_global_multiple)`. Sin embargo, al revisar los predictores por separado se observa que `year` sí es significativo (`r fmt_p(p_year_multiple)`), mientras que `km_driven` deja de serlo después de controlar por el año (`r fmt_p(p_km_multiple)`). Esto ocurre porque una parte de la relación que el kilometraje mostraba en el modelo simple también estaba relacionada con la antigüedad del vehículo.
+
+El R² ajustado aumenta de `r round(r2_ajustado_simple * 100, 2)`% en el modelo simple a `r round(r2_ajustado_multiple * 100, 2)`% en el modelo múltiple. La mejora es clara y confirma que el año aporta información importante, aunque todavía queda sin explicar una parte grande de la variación de precios. El coeficiente de `year` es de aproximadamente `r fmt_num(beta_year_multiple)` rupias, lo cual indica que cada año más reciente se relaciona con un precio esperado mayor en esa cantidad manteniendo constante el kilometraje. El coeficiente del kilometraje permanece negativo (`r fmt_num(beta_km_multiple, 2)`), pero no es estadísticamente diferente de cero dentro de este modelo.
+
+Los VIF alcanzan como máximo `r round(vif_maximo, 3)`, muy por debajo de 5, por lo que no existe multicolinealidad problemática. Los diagnósticos muestran que la escala original mantiene asimetría y heterocedasticidad. Por esa razón se exploró un modelo logarítmico y otro modelo extendido con transmisión, combustible y tipo de vendedor. Este último alcanza un R² ajustado de `r round(r2_ajustado_extendido * 100, 2)`%, lo cual evidencia que esas características contienen información relevante para explicar el precio. Este valor no se compara directamente con el R² del modelo en rupias porque la variable dependiente se encuentra en escala logarítmica, pero sirve como evidencia de que una tasación no debería basarse únicamente en kilometraje y año.
+</div>
+
+---
+
+## 7. Técnica 4 – Prueba t para dos muestras independientes
+
+<div class="box-ejercicio">
+**Ejercicio:** Compara el precio promedio de vehículos con transmisión Manual vs. Automatic usando una prueba t de Welch.
+</div>
+
+> **Prompt para el LLM:**
+> *"Actúa como un experto en estadística en R. Tengo un dataset `car_data` con las variables `selling_price` (numérica) y `transmission` (categórica: 'Manual', 'Automatic'). Necesito el código R para: (1) aplicar una prueba t de Welch con `t.test(selling_price ~ transmission, var.equal = FALSE)`; (2) imprimir los resultados con `broom::tidy()`; y (3) graficar los dos grupos con `geom_boxplot()` o `geom_violin()` en ggplot2, incluyendo la media de cada grupo. Incluye comentarios en cada paso."*
+
+```{r prueba-t, fig.width=8, fig.height=5}
+# Estadísticos descriptivos por tipo de transmisión.
+resumen_transmision <- car_data %>%
+  group_by(transmission) %>%
+  summarise(
+    cantidad = n(),
+    media = mean(selling_price),
+    mediana = median(selling_price),
+    desviacion_estandar = sd(selling_price),
+    .groups = "drop"
+  )
+
+knitr::kable(resumen_transmision, digits = 2, align = "c")
+
+# Prueba t de Welch. Esta versión no exige igualdad de varianzas.
+prueba_t <- t.test(
+  selling_price ~ transmission,
+  data = car_data,
+  var.equal = FALSE
+)
+
+resultado_t <- tidy(prueba_t)
+knitr::kable(resultado_t, digits = 4, align = "c")
+
+# Boxplot. Se usa escala logarítmica solamente para que los grupos y los valores
+# extremos puedan observarse mejor; la prueba se realiza sobre el precio original.
+ggplot(car_data, aes(x = transmission, y = selling_price, fill = transmission)) +
+  geom_boxplot(alpha = 0.70, outlier.alpha = 0.25) +
+  geom_point(
+    data = resumen_transmision,
+    aes(x = transmission, y = media),
+    inherit.aes = FALSE,
+    shape = 23,
+    size = 3,
+    fill = "white",
+    color = "black"
+  ) +
+  scale_y_log10() +
+  labs(
+    title = "Precio de venta según tipo de transmisión",
+    subtitle = "El punto blanco representa la media; eje vertical en escala logarítmica",
+    x = "Transmisión",
+    y = "Precio de venta (rupias, escala logarítmica)"
+  ) +
+  guides(fill = "none")
+
+# Valores utilizados en la interpretación.
+media_automatic <- resumen_transmision$media[
+  resumen_transmision$transmission == "Automatic"
+]
+media_manual <- resumen_transmision$media[
+  resumen_transmision$transmission == "Manual"
+]
+diferencia_medias_t <- media_automatic - media_manual
+p_prueba_t <- prueba_t$p.value
+limite_inferior_t <- prueba_t$conf.int[1]
+limite_superior_t <- prueba_t$conf.int[2]
+```
+
+<div class="box-reflexion">
+**Interpretación:**
+
+- ¿Existe diferencia estadísticamente significativa en el precio promedio entre grupos? (valor p < 0.05)
+- ¿Qué grupo presenta mayor precio promedio?
+- ¿Qué factores del mercado automotor podrían explicar esta diferencia?
+
+La prueba t de Welch presenta un valor p de `r fmt_p(p_prueba_t)`, por lo que existe una diferencia estadísticamente significativa entre los precios promedio de los vehículos manuales y automáticos. Los automáticos tienen un precio promedio aproximado de `r fmt_num(media_automatic)` rupias, mientras que los manuales alcanzan `r fmt_num(media_manual)` rupias. La diferencia estimada es de `r fmt_num(diferencia_medias_t)` rupias y su intervalo de confianza del 95% se encuentra aproximadamente entre `r fmt_num(limite_inferior_t)` y `r fmt_num(limite_superior_t)` rupias.
+
+La diferencia también es relevante en términos prácticos porque no se limita a un cambio pequeño. Sin embargo, el resultado no demuestra que la transmisión automática por sí sola cause el mayor precio. En el mercado los vehículos automáticos pueden pertenecer con mayor frecuencia a segmentos recientes, marcas de lujo o modelos con más equipamiento, por lo que una parte de la diferencia puede relacionarse con esas características. La prueba muestra una asociación clara entre transmisión y precio dentro de este conjunto de datos, pero para estimar un efecto más aislado sería necesario controlar otros factores mediante una regresión múltiple.
+</div>
+
+---
+
+## 8. Técnica 5 – ANOVA de un factor
+
+<div class="box-ejercicio">
+**Ejercicio:** Analiza si existen diferencias significativas en `selling_price` según el tipo de combustible (`fuel`). Verifica el supuesto de homogeneidad de varianzas antes de interpretar el ANOVA.
+</div>
+
+> **Prompt para el LLM:**
+> *"Actúa como un experto en estadística en R. Tengo un dataset `car_data` con las variables `selling_price` (numérica) y `fuel` (categórica con varios niveles). Necesito el código R para: (1) verificar homogeneidad de varianzas con `car::leveneTest()`; (2) ajustar un ANOVA de un factor con `aov(selling_price ~ fuel)` y mostrar el resumen; (3) si el ANOVA es significativo, aplicar la prueba post hoc de Tukey con `TukeyHSD()`; y (4) graficar `selling_price` por grupo con `geom_boxplot()` en ggplot2. Incluye comentarios en cada paso."*
+
+```{r anova, fig.width=9, fig.height=5}
+# Estadísticos descriptivos por tipo de combustible.
+resumen_combustible <- car_data %>%
+  group_by(fuel) %>%
+  summarise(
+    cantidad = n(),
+    media = mean(selling_price),
+    mediana = median(selling_price),
+    desviacion_estandar = sd(selling_price),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(media))
+
+knitr::kable(resumen_combustible, digits = 2, align = "c")
+
+# Verificación del supuesto de igualdad de varianzas.
+levene_resultado <- car::leveneTest(
+  selling_price ~ as.factor(fuel),
+  data = car_data
+)
+levene_resultado
+
+# ANOVA de un factor solicitado.
+modelo_anova <- aov(selling_price ~ fuel, data = car_data)
+anova_tabla <- tidy(modelo_anova)
+knitr::kable(anova_tabla, digits = 4, align = "c")
+
+# Comparaciones post hoc de Tukey.
+tukey_resultado <- TukeyHSD(modelo_anova)
+tukey_tabla <- tidy(tukey_resultado)
+knitr::kable(tukey_tabla, digits = 4, align = "c")
+
+# Gráfico por grupo. La escala logarítmica permite visualizar mejor la dispersión.
+ggplot(car_data, aes(x = fuel, y = selling_price, fill = fuel)) +
+  geom_boxplot(alpha = 0.75, outlier.alpha = 0.25) +
+  scale_y_log10() +
+  labs(
+    title = "Precio de venta según tipo de combustible",
+    subtitle = "Eje vertical en escala logarítmica",
+    x = "Tipo de combustible",
+    y = "Precio de venta (rupias, escala logarítmica)"
+  ) +
+  guides(fill = "none")
+
+# El grupo Electric tiene una sola observación y no permite estimar su varianza.
+# Como comprobación adicional se aplica ANOVA de Welch a los grupos con al menos
+# dos observaciones. Esta prueba es más adecuada cuando las varianzas son distintas.
+car_data_welch <- car_data %>%
+  add_count(fuel, name = "cantidad_grupo") %>%
+  dplyr::filter(cantidad_grupo >= 2) %>%
+  select(-cantidad_grupo)
+
+anova_welch <- oneway.test(
+  selling_price ~ fuel,
+  data = car_data_welch,
+  var.equal = FALSE
+)
+
+knitr::kable(tidy(anova_welch), digits = 4, align = "c")
+
+# Valores utilizados en la interpretación.
+p_levene <- levene_resultado$`Pr(>F)`[1]
+p_anova <- anova_tabla$p.value[anova_tabla$term == "fuel"]
+p_anova_welch <- anova_welch$p.value
+media_diesel <- resumen_combustible$media[resumen_combustible$fuel == "Diesel"]
+media_lpg <- resumen_combustible$media[resumen_combustible$fuel == "LPG"]
+n_electric <- resumen_combustible$cantidad[resumen_combustible$fuel == "Electric"]
+```
+
+<div class="box-reflexion">
+**Interpretación:**
+
+- ¿El test de Levene indica homogeneidad de varianzas? ¿Cómo afecta esto la interpretación del ANOVA?
+- ¿Existen diferencias significativas entre al menos dos tipos de combustible?
+- ¿Qué comparaciones post hoc (Tukey) son significativas?
+- ¿Qué explica desde el mercado que ciertos combustibles tengan precios más altos?
+
+El test de Levene presenta un valor p de `r fmt_p(p_levene)`, por lo que se rechaza el supuesto de igualdad de varianzas. Esto significa que el ANOVA tradicional debe interpretarse con precaución. Aun así, el ANOVA obtiene un valor p de `r fmt_p(p_anova)` y señala diferencias significativas entre al menos dos tipos de combustible. Como verificación adicional se aplicó el ANOVA de Welch a los combustibles con al menos dos observaciones y también resultó significativo (`r fmt_p(p_anova_welch)`), lo cual fortalece la conclusión general.
+
+El combustible con mayor precio promedio es Diesel, con aproximadamente `r fmt_num(media_diesel)` rupias, mientras que LPG presenta el promedio más bajo, cercano a `r fmt_num(media_lpg)` rupias. La prueba de Tukey muestra diferencias significativas entre Diesel y CNG, Diesel y LPG, y Diesel y Petrol. Las comparaciones que incluyen Electric no deben tomarse como evidencia firme porque ese grupo solamente contiene `r n_electric` observación, de modo que no representa adecuadamente la variabilidad de los vehículos eléctricos.
+
+Desde la lógica del mercado, los vehículos Diesel pueden concentrarse en modelos más grandes, utilitarios o de mayor valor y también pueden tener una demanda distinta por su rendimiento en recorridos largos. Por otra parte, LPG y CNG pueden aparecer con mayor frecuencia en vehículos económicos o más antiguos. Estas explicaciones son posibles y coherentes con el mercado, pero el ANOVA no demuestra que el combustible sea la causa directa del precio porque otras características del vehículo también cambian entre los grupos.
+</div>
+
+---
+
+## 9. Documentación del uso de IA
+
+<div class="box-instruccion">
+**Instrucción:** Completa la siguiente tabla para cada uso del LLM en este análisis. La evaluación crítica debe ir más allá de "funcionó bien" — identifica qué asumió el LLM, qué omitió y qué ajustaste.
+</div>
+
+| Técnica | Herramienta usada | Prompt enviado (resumen de 1-2 oraciones) | Resultado obtenido | Evaluación crítica |
+|---|---|---|---|---|
+| Correlación | ChatGPT | Se solicitó calcular la matriz de correlación entre precio, año y kilometraje y representarla con una visualización en R. | El LLM propuso seleccionar las variables, utilizar `cor()` y construir una matriz gráfica. | El código era correcto, pero la primera interpretación podía confundir una correlación baja con independencia y no explicaba que la correlación no mide causalidad. Se ajustó la explicación y se identificó correctamente que precio y kilometraje era la relación más cercana a cero. |
+| Regresión simple | ChatGPT | Se pidió crear el modelo `selling_price ~ km_driven`, mostrar resultados con `broom`, graficar la recta y revisar supuestos. | Se obtuvo el modelo, la tabla de coeficientes, el R², el gráfico de dispersión y los diagnósticos. | El LLM tendía a concentrarse en el valor p y podía presentar el resultado como si el kilometraje explicara bien el precio. Se añadió la diferencia entre significancia estadística y relevancia práctica y se destacó que el R² es bajo. |
+| Regresión múltiple | ChatGPT | Se solicitó agregar `year`, comparar el modelo con el simple, calcular VIF y visualizar efectos parciales. | Se generó el modelo múltiple, la comparación de R², la prueba F, los VIF y los gráficos de diagnóstico. | La salida debía revisarse porque el modelo global era significativo, pero `km_driven` individualmente no lo era al controlar por el año. También se evitó atribuir el cambio de coeficiente a factores que no fueron comprobados directamente. |
+| Prueba t | ChatGPT | Se pidió comparar los precios de transmisiones manuales y automáticas mediante una prueba t de Welch y un boxplot. | El LLM produjo la prueba correcta, las medias por grupo y una visualización comparativa. | El código cumplía con la técnica, pero la interpretación inicial podía sugerir que la transmisión causaba la diferencia. Se añadió que la marca, el año y el segmento del vehículo pueden actuar como variables de confusión. |
+| ANOVA | ChatGPT | Se pidió evaluar diferencias de precio por combustible, verificar varianzas, aplicar ANOVA y realizar Tukey. | Se obtuvo Levene, ANOVA, Tukey y el boxplot por combustible. | El LLM no resolvía por sí solo la violación de homogeneidad ni advertía suficientemente que Electric tenía una sola observación. Se agregó una comprobación con ANOVA de Welch para los grupos con varianza estimable y se interpretaron con cautela las comparaciones. |
+
+---
+
+## 10. Conclusiones estratégicas
+
+<div class="box-decision">
+**Decisión:** Con base en los resultados de las cinco técnicas, redacta al menos **tres recomendaciones de negocio** concretas para el mercado automotor. Cada recomendación debe citar evidencia estadística específica (p. ej. valor del coeficiente, p-value, diferencia de medias).
+</div>
+
+**Recomendación 1:**
+
+El año de fabricación debe tener un peso mayor que el kilometraje al definir el precio inicial de un vehículo usado. El modelo múltiple estima un incremento promedio cercano a `r fmt_num(beta_year_multiple)` rupias por cada año más reciente y su valor p es `r fmt_p(p_year_multiple)`. Además, incluir `year` elevó el R² ajustado de `r round(r2_ajustado_simple * 100, 2)`% a `r round(r2_ajustado_multiple * 100, 2)`%, por lo que esta variable aporta mucha más información que utilizar solamente el recorrido acumulado.
+
+**Recomendación 2:**
+
+No se debería utilizar el kilometraje como único criterio de tasación. Aunque en el modelo simple su coeficiente es significativo y equivale a una reducción aproximada de `r fmt_num(abs(beta_km_simple) * 10000)` rupias por cada 10,000 km, el modelo solamente explica `r round(r2_simple * 100, 2)`% de la variación del precio. Al controlar por el año el kilometraje deja de ser significativo, así que la empresa debería comparar vehículos del mismo año y segmento antes de aplicar un ajuste por kilometraje.
+
+**Recomendación 3:**
+
+La estrategia de precios y de inventario debe diferenciar los vehículos por transmisión y combustible. Los automáticos presentan un precio promedio superior al de los manuales por aproximadamente `r fmt_num(diferencia_medias_t)` rupias, mientras que Diesel supera significativamente a Petrol, CNG y LPG en las comparaciones de Tukey. Estos resultados pueden utilizarse para segmentar ofertas y expectativas de margen, pero la decisión final debe considerar también el año, la marca, el modelo y el tipo de vendedor porque las pruebas bivariadas no aíslan el efecto causal de cada característica.
+
+---
+
+## 11. Reflexión final sobre el uso del LLM
+
+<div class="box-reflexion">
+**Reflexión:** Responde las siguientes preguntas en un párrafo cada una.
+
+**¿En qué aspectos coincidió tu interpretación con la generada por el LLM?**
+
+La interpretación del grupo coincidió con el LLM en las tendencias principales. Ambos identificaron que los vehículos más recientes tienden a tener precios más altos, que el kilometraje muestra una relación negativa con el precio en el análisis simple y que existen diferencias importantes entre transmisiones y combustibles. También coincidieron en que las pruebas debían acompañarse con gráficos y que el VIF era necesario para revisar la regresión múltiple.
+
+**¿En qué aspectos difirió o fue incompleta la interpretación del LLM?**
+
+La interpretación del LLM fue incompleta cuando se limitó a revisar si el valor p era menor que 0.05 porque eso no indica por sí solo que un modelo sea útil para tomar decisiones. El grupo tuvo que resaltar el R² bajo de la regresión simple, aclarar que `km_driven` deja de ser significativo al incluir `year`, reconocer la desigualdad de varianzas en el ANOVA y señalar que Electric tiene una sola observación. También se corrigieron explicaciones que podían sonar causales aunque las técnicas utilizadas solo muestran asociaciones.
+
+**¿Qué limitaciones identificaste en el uso del LLM para análisis estadístico?**
+
+El LLM puede generar código funcional con rapidez, pero depende mucho de la calidad del prompt y no sustituye la revisión de los supuestos ni el conocimiento del contexto. Puede interpretar un resultado estadísticamente significativo como si fuera necesariamente importante para el negocio y también puede ofrecer explicaciones de mercado que parecen razonables sin comprobarlas con los datos disponibles. Por eso fue útil como copiloto para organizar el código, pero cada salida tuvo que ejecutarse, compararse con los resultados reales y ajustarse mediante criterio humano antes de incorporarla al reporte.
+</div>
+
+---
+
+*Preparado por: Andrew Böcker Páez | Curso 92-0026 – Análisis de Datos Avanzado para Negocios | ULACIT*
